@@ -348,6 +348,60 @@ class BackendTests(unittest.TestCase):
         self.denied(lambda:self.workflow('quote.convert',{'id':quote,'job_number':'LEAK'}))
         self.assertEqual(self.read('job',job)['lines'],[])
 
+    def test_number_sequences_are_automatic_separate_and_immutable(self):
+        customer,supplier,job,_=self.fixtures()
+        self.assertEqual(self.read('customers',customer)[0]['code'],'CUS-000001')
+        self.assertEqual(self.read('suppliers',supplier)[0]['code'],'SUP-000001')
+        self.assertEqual(self.read('job',job)['number'],'JOB-000001')
+        self.assertEqual(self.read('job',job)['costsheet_number'],'CS-000001')
+        second=self.command('master.save',{'kind':'customers','name':'Second','currency':'USD','data':{}})['id']
+        self.assertEqual(self.read('customers',second)[0]['code'],'CUS-000002')
+        self.command('master.save',{'kind':'customers','id':customer,'code':'DO-NOT-RENUMBER','name':'Customer','currency':'AED','data':{}})
+        self.assertEqual(self.read('customers',customer)[0]['code'],'CUS-000001')
+        self.denied(lambda:self.conn.execute("select binderclip.next_number(%s,'customers')",(self.tenant,)))
+
+    def test_automatic_invoice_and_external_supplier_reference_are_separate(self):
+        job,invoice=self.ready()
+        self.assertEqual(self.read('invoice',invoice)['number'],'INV-000001')
+        bill=self.read('job',job)['bills'][0]
+        self.assertEqual(bill['document_number'],'BIL-000001')
+        self.assertEqual(bill['number'],'B1')
+        self.command('invoice.approve',{'id':invoice});self.command('invoice.issue',{'id':invoice})
+        self.command('invoice.receipt',{'id':invoice,'reference':'BANK-123','amount':'100','received_on':'2026-10-27'})
+        receipt=self.read('invoice',invoice)['receipts'][0]
+        self.assertEqual(receipt['document_number'],'REC-000001');self.assertEqual(receipt['reference'],'BANK-123')
+
+    def test_job_addresses_survive_save_without_manual_number(self):
+        customer=self.command('master.save',{'kind':'customers','name':'Address customer','currency':'JPY','data':{}})['id']
+        data={'pol':'Tokyo','pod':'Dubai','shipper_address':'Tokyo warehouse, Japan','consignee_address':'Dubai warehouse, UAE'}
+        job=self.command('job.save',{'customer_id':customer,'data':data})['id']
+        self.assertEqual(self.read('job',job)['data'],data)
+        self.assertEqual(self.read('customers',customer)[0]['currency'],'JPY')
+
+    def test_invoice_queue_explains_readiness_and_excludes_billed_jobs(self):
+        _,supplier,job,buy=self.fixtures()
+        def queue():return self.conn.execute('select public.bc_billing(%s)',(self.tenant,)).fetchone()[0]
+        self.assertFalse(queue()[0]['approved']);self.assertEqual(queue()[0]['status'],'Draft')
+        self.command('job.book',{'id':job});self.bill(supplier,job,buy);self.command('cost.approve',{'id':job})
+        self.assertEqual(queue()[0]['unbilled_count'],'1')
+        self.command('invoice.generate',{'job_ids':[job]})
+        self.assertEqual(queue()[0]['unbilled_count'],'0')
+
+    def test_number_allocation_is_concurrent_and_does_not_truncate(self):
+        from concurrent.futures import ThreadPoolExecutor
+        with psycopg.connect(os.environ['SUPABASE_TEST_DSN'],autocommit=True) as owner:
+            tenant=owner.execute("insert into binderclip.companies(name) values('Concurrent sequence test') returning id").fetchone()[0]
+            try:
+                def allocate(_):
+                    with psycopg.connect(os.environ['SUPABASE_TEST_DSN'],autocommit=True) as worker:
+                        return worker.execute("select binderclip.next_number(%s,'customers')",(tenant,)).fetchone()[0]
+                with ThreadPoolExecutor(max_workers=4) as pool:numbers=list(pool.map(allocate,range(12)))
+                self.assertEqual(len(set(numbers)),12);self.assertEqual(sorted(numbers)[-1],'CUS-000012')
+                owner.execute("update binderclip.number_sequences set last_value=999999 where tenant_id=%s and kind='customers'",(tenant,))
+                self.assertEqual(allocate(0),'CUS-1000000')
+            finally:
+                owner.execute('delete from binderclip.number_sequences where tenant_id=%s',(tenant,));owner.execute('delete from binderclip.companies where id=%s',(tenant,))
+
     def test_costsheet_correction_disapproval_and_invoice_freeze(self):
         _,supplier,job,buy=self.fixtures()
         sell=next(l for l in self.read('job',job)['lines'] if l['side']=='SELL')
@@ -373,7 +427,7 @@ class BackendTests(unittest.TestCase):
         _,_,job,_=self.fixtures()
         self.owner();self.conn.execute("update binderclip.grants set can_export=false where path='costs.detail.print'");self.client()
         self.denied(lambda:self.costsheet('print',{'job_id':job}))
-        self.assertEqual(self.costsheet('detail',{'job_id':job})['number'],'J1')
+        self.assertTrue(self.costsheet('detail',{'job_id':job})['number'].startswith('JOB-'))
         self.owner();self.conn.execute("update binderclip.grants set scope='none' where path='costs.detail.manage' and action='U'");self.client()
         sell=next(l for l in self.read('job',job)['lines'] if l['side']=='SELL')
         self.denied(lambda:self.costsheet('line.save',{'job_id':job,'line_id':sell['id'],'service':'Denied','quantity':'1','unit_rate':'1','currency':'AED','fx_rate':'1','tax_rate':'5','reason':'No access'}))
