@@ -90,6 +90,53 @@ class BackendTests(unittest.TestCase):
         self.assertEqual(self.read('jobs'),[])
         self.assertEqual(self.read('overview')['active_jobs'],'0')
 
+    def test_record_tracking_is_server_assigned_and_preserves_creator(self):
+        customer=self.command('master.save',{'kind':'customers','name':'Tracked','created_by':str(uuid.uuid4()),'created_at':'1990-01-01','currency':'AED'})['id']
+        before=self.read('customers',customer)[0]
+        self.assertEqual(before['created_by'],str(ADMIN));self.assertEqual(before['created_by_name'],'Admin1')
+        self.assertTrue(before['created_at'].startswith('2026-') or before['created_at']>'2026-')
+        self.assertIsNone(before['updated_at'])
+        other=uuid.uuid4();session=uuid.uuid4()
+        self.owner();self.conn.execute('insert into auth.users values(%s,%s,now(),null)',(other,'editor@example.test'))
+        self.conn.execute("insert into auth.identities(user_id,provider) values(%s,'google')",(other,))
+        self.conn.execute('insert into auth.sessions values(%s,%s,null)',(session,other))
+        member=self.conn.execute("insert into binderclip.members(tenant_id,user_id,email,display_name) values(%s,%s,'editor@example.test','Operations editor') returning id",(self.tenant,other)).fetchone()[0]
+        self.conn.execute("insert into binderclip.member_roles(tenant_id,member_id,role_id) select %s,%s,id from binderclip.roles where tenant_id=%s and name='Company administrator'",(self.tenant,member,self.tenant))
+        self.conn.execute("select set_config('request.jwt.claims',%s,true)",(json.dumps({'sub':str(other),'session_id':str(session)}),));self.client()
+        self.command('master.save',{'id':customer,'kind':'customers','name':'Updated','currency':'AED','created_at':'1990-01-01','updated_by':str(ADMIN)})
+        after=self.read('customers',customer)[0]
+        self.assertEqual(after['created_at'],before['created_at']);self.assertEqual(after['created_by'],str(ADMIN))
+        self.assertEqual(after['updated_by'],str(other));self.assertEqual(after['updated_by_name'],'Operations editor')
+        self.assertGreaterEqual(after['updated_at'],before['created_at'])
+        self.denied(lambda:self.conn.execute('select binderclip.with_tracking(%s,%s)',(self.tenant,Jsonb(after))))
+
+    def test_tracking_child_entries_and_financial_history(self):
+        _,supplier,job,buy=self.fixtures()
+        row=self.read('job',job)
+        self.assertTrue(all(l['created_by_name']=='Admin1' and l['created_at'] for l in row['lines']))
+        self.assertEqual(row['updated_by_name'],'Admin1')
+        self.assertEqual(self.costsheet('list')[0]['created_by_name'],'Admin1')
+        self.command('job.book',{'id':job});self.bill(supplier,job,buy)
+        entries=self.read('journal');self.assertTrue(all(e['created_by_name']=='Admin1' for e in entries))
+        self.owner()
+        self.denied(lambda:self.conn.execute('update binderclip.journals set updated_at=now()'))
+        self.client()
+
+    def test_quote_editor_cannot_change_hidden_buy_lines(self):
+        _,quote=self.quote_fixture();source=self.workspace('quote',quote)
+        buy=next(l for l in source['lines'] if l['side']=='BUY')
+        self.owner();self.conn.execute("update binderclip.grants set scope='none' where path='costs.detail.manage' and action='R'");self.client()
+        self.denied(lambda:self.workflow('quote.line',{'id':quote,'line_id':buy['id'],'side':'SELL','service':'Changed hidden cost','quantity':'1','unit_rate':'1','tax_rate':'5'}))
+        self.assertTrue(all(l['side']=='SELL' for l in self.workspace('quote',quote)['lines']))
+
+    def test_all_private_tables_and_helpers_reject_direct_browser_access(self):
+        self.owner()
+        rows=self.conn.execute("select c.relname,c.relrowsecurity,has_table_privilege('authenticated',c.oid,'SELECT,INSERT,UPDATE,DELETE'),has_table_privilege('anon',c.oid,'SELECT,INSERT,UPDATE,DELETE') from pg_class c join pg_namespace n on n.oid=c.relnamespace where n.nspname='binderclip' and c.relkind='r'").fetchall()
+        for name,rls,authenticated,anonymous in rows:
+            self.assertTrue(rls,name);self.assertFalse(authenticated,name);self.assertFalse(anonymous,name)
+        self.client()
+        self.denied(lambda:self.conn.execute('select * from binderclip.masters'))
+
     def test_all_financial_drilldowns(self):
         job,invoice=self.issued()
         detail=self.read('job',job)
