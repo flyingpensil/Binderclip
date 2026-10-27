@@ -59,6 +59,8 @@ class BackendTests(unittest.TestCase):
         return self.conn.execute('select public.bc_workspace(%s,%s,%s,%s,%s)',(self.tenant,kind,id,query,action)).fetchone()[0]
     def report(self,kind,action='R'):
         return self.conn.execute('select public.bc_report(%s,%s,current_date,null,null,%s)',(self.tenant,kind,action)).fetchone()[0]
+    def costsheet(self,action,data=None):
+        return self.conn.execute('select public.bc_costsheet(%s,%s,%s)',(self.tenant,action,Jsonb(data or {}))).fetchone()[0]
     def owner(self): self.conn.execute('reset role')
     def client(self): self.conn.execute('set local role authenticated')
     def denied(self,fn):
@@ -315,5 +317,51 @@ class BackendTests(unittest.TestCase):
         self.owner();self.conn.execute("update binderclip.grants set scope='none' where path='operations.timeline.manage'");self.client()
         self.assertEqual(self.workspace('job_workspace',job)['events'],[])
         self.assertNotIn('Confidential handling note',json.dumps(self.read('job',job)))
+
+    def test_costsheet_lists_exact_buy_sell_and_margin(self):
+        _,_,job,_=self.fixtures()
+        row=self.costsheet('detail',{'job_id':job})
+        self.assertEqual(row['figures']['margin'],'600.00')
+        self.assertEqual(row['figures']['margin_percent'],'37.50')
+        self.assertEqual(row['buy_lines'],'1')
+        self.assertEqual(row['has_invoices'],False)
+        self.assertEqual(self.costsheet('list')[0]['sheet_status'],'Open')
+
+    def test_costsheet_apply_quote_is_once_and_preserves_source(self):
+        _,quote=self.quote_fixture();self.workflow('quote.approve',{'id':quote})
+        source=self.workspace('quote',quote)
+        job=self.command('job.save',{'number':'EMPTY-JOB','customer_id':source['customer_id'],'data':source['data']})['id']
+        self.costsheet('apply',{'job_id':job,'quote_id':quote})
+        self.assertEqual(len(self.read('job',job)['lines']),2)
+        self.assertEqual(self.workspace('quote',quote),source)
+        self.denied(lambda:self.costsheet('apply',{'job_id':job,'quote_id':quote}))
+
+    def test_costsheet_correction_disapproval_and_invoice_freeze(self):
+        _,supplier,job,buy=self.fixtures()
+        sell=next(l for l in self.read('job',job)['lines'] if l['side']=='SELL')
+        self.command('job.book',{'id':job});self.bill(supplier,job,buy)
+        change={'job_id':job,'line_id':sell['id'],'service':'Freight','quantity':'2','unit_rate':'850','currency':'AED','fx_rate':'1','tax_rate':'5','reason':'Updated customer agreement'}
+        self.denied(lambda:self.costsheet('line.save',{**change,'line_id':buy}))
+        self.costsheet('line.save',change)
+        self.command('cost.approve',{'id':job})
+        self.denied(lambda:self.costsheet('line.save',change))
+        self.denied(lambda:self.costsheet('disapprove',{'job_id':job,'reason':''}))
+        self.costsheet('disapprove',{'job_id':job,'reason':'Customer requested handling fee'})
+        self.costsheet('line.save',{'job_id':job,'side':'SELL','service':'Handling','quantity':'1','unit_rate':'50','currency':'AED','fx_rate':'1','tax_rate':'5'})
+        self.command('cost.approve',{'id':job})
+        invoice=self.costsheet('invoice',{'job_id':job,'invoice_date':'2026-10-27','due_date':'2026-11-27'})['id']
+        self.assertEqual(self.read('invoice',invoice)['total'],'1837.50')
+        self.assertEqual(self.read('invoice',invoice)['due_date'],'2026-11-27')
+        self.denied(lambda:self.costsheet('disapprove',{'job_id':job,'reason':'Too late'}))
+        self.denied(lambda:self.costsheet('invoice',{'job_id':job}))
+
+    def test_costsheet_print_and_corrections_require_own_process_grants(self):
+        _,_,job,_=self.fixtures()
+        self.owner();self.conn.execute("update binderclip.grants set can_export=false where path='costs.detail.print'");self.client()
+        self.denied(lambda:self.costsheet('print',{'job_id':job}))
+        self.assertEqual(self.costsheet('detail',{'job_id':job})['number'],'J1')
+        self.owner();self.conn.execute("update binderclip.grants set scope='none' where path='costs.detail.manage' and action='U'");self.client()
+        sell=next(l for l in self.read('job',job)['lines'] if l['side']=='SELL')
+        self.denied(lambda:self.costsheet('line.save',{'job_id':job,'line_id':sell['id'],'service':'Denied','quantity':'1','unit_rate':'1','currency':'AED','fx_rate':'1','tax_rate':'5','reason':'No access'}))
 
 if __name__ == '__main__': unittest.main(verbosity=2)
