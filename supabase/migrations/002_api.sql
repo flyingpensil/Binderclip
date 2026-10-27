@@ -196,7 +196,7 @@ begin
   perform binderclip.match_post(p_tenant,target);result:=target;
  elsif p_action='cost.approve' then
   j:=binderclip.job_guard(p_tenant,target,'costs.detail.approve');
-  if j.status='Draft' or not exists(select 1 from binderclip.cost_lines where job_id=j.id and side='SELL') or exists(select 1 from binderclip.cost_lines l left join binderclip.supplier_bills b on b.line_id=l.id where l.job_id=j.id and l.side='BUY' and (b.id is null or b.status<>'Matched')) then raise exception 'Book the job and match every buy estimate before approval';end if;
+  if j.status='Draft' or not exists(select 1 from binderclip.cost_lines where job_id=j.id and side='SELL') or exists(select 1 from binderclip.cost_lines l left join binderclip.supplier_bills sb on sb.line_id=l.id where l.job_id=j.id and l.side='BUY' and (sb.id is null or sb.status<>'Matched')) then raise exception 'Book the job and match every buy estimate before approval';end if;
   update binderclip.jobs set approved=true where id=j.id;result:=j.id;
  elsif p_action='invoice.generate' then
   select array_agg(value::uuid order by value) into ids from jsonb_array_elements_text(p_data->'job_ids');
@@ -242,7 +242,7 @@ begin
   else raise exception 'Invalid invoice state transition';end if;result:=i.id;
  elsif p_action='cost.lock' then
   j:=binderclip.job_guard(p_tenant,target,'costs.detail.lock');
-  if not j.approved or not exists(select 1 from binderclip.cost_lines where job_id=j.id and side='SELL') or exists(select 1 from binderclip.cost_lines l left join binderclip.supplier_bills b on b.line_id=l.id where l.job_id=j.id and l.side='BUY' and (b.id is null or b.status<>'Matched'))
+  if not j.approved or not exists(select 1 from binderclip.cost_lines where job_id=j.id and side='SELL') or exists(select 1 from binderclip.cost_lines l left join binderclip.supplier_bills sb on sb.line_id=l.id where l.job_id=j.id and l.side='BUY' and (sb.id is null or sb.status<>'Matched'))
    or exists(select 1 from binderclip.cost_lines l left join binderclip.invoice_items x on x.line_id=l.id left join binderclip.invoices v on v.id=x.invoice_id where l.job_id=j.id and l.side='SELL' and (v.id is null or v.status in ('Draft','Approved'))) then raise exception 'Approve costs, match bills and issue all sell charges before locking';end if;
   update binderclip.jobs set locked_at=now(),locked_by=u where id=j.id;result:=j.id;
  elsif p_action='cost.unlock' then
