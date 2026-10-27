@@ -40,4 +40,4 @@ The Compose example uses the database owner for convenient bootstrap. Before a l
 
 ## Verification status
 
-The local domain/security/screen suite runs on SQLite. PostgreSQL-only tests verify deferred balance checks, immutable postings, insertion into committed journals, cross-company relationships and role assignments when run against PostgreSQL. A GitHub Actions workflow supplies PostgreSQL 17. Actual PostgreSQL execution, Docker build, real Google credentials, multi-user load testing and deployment-domain HTTPS verification are separate release checks.
+The local domain/security/screen suite runs on SQLite. All 54 tests also passed on PostgreSQL 17 in [GitHub Actions](https://github.com/flyingpensil/Binderclip/actions/runs/40460963364), including deferred balance checks, immutable postings, insertion into committed journals, cross-company relationships, role assignments and concurrent booking. Docker build, real Google credentials, broader multi-user load testing and deployment-domain HTTPS verification remain separate release checks. For the prepared Admin1/Render setup, follow [client-launch.md](client-launch.md).

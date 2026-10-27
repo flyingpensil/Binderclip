@@ -16,7 +16,7 @@ This repository implements a working foundation and the immediate schema/scaffol
 | Accounting | Fixed account catalog, balanced immutable journal service and PostgreSQL guards | Configurable chart of accounts, fiscal periods/closing, reversals, trial balance/P&L/balance sheet and external accountant validation |
 | Documents/exports | Browser print / Save as PDF, Excel-readable CSV | Direct generated PDFs/XLSX, branded template designer, permissioned object storage, malware scanning for uploads |
 | Admin | Company bootstrap, user/role assignment, permissions matrix | Deactivate/reactivate members, MFA policy, role change approvals, security audit UI |
-| Operations | Local startup, Docker blueprint, PostgreSQL CI definition | Run deployment/integrity tests on actual PostgreSQL, load/concurrency testing, monitoring, rate limiting, backups/restore drills and penetration testing |
+| Operations | Local startup, Docker/Render blueprints, 54 passing PostgreSQL CI tests including concurrent booking | Managed deployment smoke tests, broader load testing, monitoring, rate limiting, backups/restore drills and penetration testing |
 
 All receipt settlements currently use invoice carrying FX, so do not record actual foreign-currency settlements with a different bank exchange rate until realized FX accounting is implemented. Dashboard receivables explicitly include only base-currency invoices; transaction ledgers retain each invoice's currency. Supplier payables are not presented as settled because no supplier payment workflow exists.
 
