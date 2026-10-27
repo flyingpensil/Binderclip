@@ -16,6 +16,7 @@ Run these files in the **new, empty Binderclip project's SQL Editor**, in order,
 6. `supabase/migrations/006_private_documents.sql`
 7. `supabase/migrations/007_audit_scope.sql`
 8. `supabase/migrations/008_cost_sheet_workspace.sql`
+9. `supabase/migrations/009_quote_source_scope.sql`
 
 Files 001–003 are first-install migrations, not scripts to rerun over an existing installation. Bootstrap refuses to replace an existing company. File 004 is a function-only upgrade for existing installations. Bootstrap creates Admin1 (`inventory.choco@gmail.com`) and four role presets, with no sample transactions. The Google account binds to the invited membership on first verified sign-in.
 

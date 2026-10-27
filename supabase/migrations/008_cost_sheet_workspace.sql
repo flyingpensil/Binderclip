@@ -42,7 +42,7 @@ begin
    'line_values',(select coalesce(jsonb_agg(jsonb_build_object('id',l.id,'estimated_base',binderclip.base(l.quantity,l.unit_rate,l.fx_rate),'actual_base',case when b.status='Matched' then binderclip.base(b.quantity,b.unit_rate,b.fx_rate) else binderclip.base(l.quantity,l.unit_rate,l.fx_rate) end)),'[]') from binderclip.cost_lines l left join binderclip.supplier_bills b on b.line_id=l.id where l.job_id=target));
  elsif p_action='quotes' then
   perform binderclip.require(p_tenant,'costs.detail.apply','C',job_row.created_by,job_row.branch);
-  select coalesce(jsonb_agg(jsonb_build_object('id',q.id,'name',q.number||' · '||q.currency||' · valid until '||q.valid_until)),'[]') into result from binderclip.quotations q where q.tenant_id=p_tenant and q.customer_id=job_row.customer_id and q.status='Approved' and q.valid_until>=current_date and binderclip.allowed(p_tenant,'sales.quotes.manage','R',q.created_by,q.branch);
+  select coalesce(jsonb_agg(jsonb_build_object('id',q.id,'name',q.number||' · '||q.currency||' · valid until '||q.valid_until)),'[]') into result from binderclip.quotations q where q.tenant_id=p_tenant and q.customer_id=job_row.customer_id and q.status='Approved' and q.valid_until>=current_date and binderclip.allowed(p_tenant,'sales.quotes.manage','R',q.created_by,q.branch) and binderclip.allowed(p_tenant,'costs.detail.manage','R',q.created_by,q.branch);
  elsif p_action in('line.save','disapprove','apply','invoice') then
   if job_row.locked_at is not null or job_row.status in('Closed','Cancelled') then raise exception 'Locked or archived cost sheets cannot be changed';end if;
   if p_action='invoice' then
@@ -60,6 +60,7 @@ begin
     if job_row.status<>'Draft' or job_row.approved or exists(select 1 from binderclip.cost_lines where job_id=target) then raise exception 'Apply a quotation only to an empty draft cost sheet to prevent duplicate charges';end if;
     select * into strict quote_row from binderclip.quotations where id=(p_data->>'quote_id')::uuid and tenant_id=p_tenant for share;
     perform binderclip.require(p_tenant,'sales.quotes.manage','R',quote_row.created_by,quote_row.branch);
+    perform binderclip.require(p_tenant,'costs.detail.manage','R',quote_row.created_by,quote_row.branch);
     if quote_row.customer_id<>job_row.customer_id or quote_row.status<>'Approved' or quote_row.valid_until<current_date then raise exception 'Choose a valid approved quotation for this customer';end if;
     if not exists(select 1 from binderclip.quotation_lines where quote_id=quote_row.id) then raise exception 'Quotation has no charges';end if;
     for quote_line in select * from binderclip.quotation_lines where quote_id=quote_row.id loop

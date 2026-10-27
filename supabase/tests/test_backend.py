@@ -336,6 +336,18 @@ class BackendTests(unittest.TestCase):
         self.assertEqual(self.workspace('quote',quote),source)
         self.denied(lambda:self.costsheet('apply',{'job_id':job,'quote_id':quote}))
 
+    def test_quote_copy_does_not_bypass_source_cost_visibility(self):
+        _,quote=self.quote_fixture();self.workflow('quote.approve',{'id':quote})
+        source=self.workspace('quote',quote)
+        job=self.command('job.save',{'number':'SCOPED-JOB','customer_id':source['customer_id'],'data':source['data']})['id']
+        self.owner();other=uuid.uuid4();self.conn.execute('insert into auth.users values(%s,%s,now(),null)',(other,'other@example.com'))
+        self.conn.execute('update binderclip.quotations set created_by=%s where id=%s',(other,quote))
+        self.conn.execute("update binderclip.grants set scope='self' where path='costs.detail.manage' and action='R'");self.client()
+        self.assertEqual(self.costsheet('quotes',{'job_id':job}),[])
+        self.denied(lambda:self.costsheet('apply',{'job_id':job,'quote_id':quote}))
+        self.denied(lambda:self.workflow('quote.convert',{'id':quote,'job_number':'LEAK'}))
+        self.assertEqual(self.read('job',job)['lines'],[])
+
     def test_costsheet_correction_disapproval_and_invoice_freeze(self):
         _,supplier,job,buy=self.fixtures()
         sell=next(l for l in self.read('job',job)['lines'] if l['side']=='SELL')

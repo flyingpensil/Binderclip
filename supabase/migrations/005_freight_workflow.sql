@@ -140,6 +140,7 @@ begin
    update binderclip.quotations set status='Cancelled' where id=target;result:=target;
   else
    perform binderclip.require(p_tenant,'sales.quotes.convert','C',quote_row.created_by,quote_row.branch);
+   perform binderclip.require(p_tenant,'costs.detail.manage','R',quote_row.created_by,quote_row.branch);
    if quote_row.status<>'Approved' or quote_row.valid_until<current_date then raise exception 'Only a valid approved quote can become a job';end if;
    v:=public.bc_command(p_tenant,'job.save',jsonb_build_object('number',p_data->>'job_number','customer_id',quote_row.customer_id,'data',quote_row.data));result:=(v->>'id')::uuid;
    for line_row in select * from binderclip.quotation_lines where quote_id=target loop
