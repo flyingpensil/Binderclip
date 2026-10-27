@@ -15,7 +15,7 @@ test('authenticated freight workspace renders and submits complete workflows',as
  const paths=['overview.dashboard.view','jobs.list.manage','costs.detail.manage','customers.list.manage','suppliers.list.manage','sales.enquiries.manage','sales.quotes.manage','sales.quotes.approve','sales.quotes.convert','sales.quotes.print','operations.timeline.manage','operations.tasks.manage','operations.documents.manage','operations.requirements.manage','finance.payments.manage','reports.finance.view','reports.journal.view','settings.roles.manage','settings.members.manage','settings.company.manage','invoicing.list.manage'];
  const member={tenant_id:'tenant',display_name:'Admin1',branch:'Dubai',email:'admin@example.test',company:{name:'Binderclip',currency:'AED'},grants:paths.flatMap(path=>['C','R','U','X'].map(action=>({path,action,scope:'global',can_export:true})))};
  const calls=[],uploads=[];let commandError=null,uploadError=null;
- let invoiceReady=false;
+ let invoiceReady=false,noCustomers=false;
  let printed='';w.print=()=>{printed=w.document.getElementById('screen').textContent;};
  member.grants.push(...['costs.detail.apply','costs.detail.disapprove','costs.detail.print','costs.detail.approve','costs.detail.book','costs.detail.match','invoicing.detail.generate'].flatMap(path=>['C','R','U','X'].map(action=>({path,action,scope:'global',can_export:true}))));
  const enquiry={id:'e1',number:'ENQ-1',customer_id:'c1',subject:'Import machinery',customer_name:'Customer',status:'Pending',data:{pol:'Shanghai',pod:'Jebel Ali',mode:'Ocean'}};
@@ -30,7 +30,7 @@ test('authenticated freight workspace renders and submits complete workflows',as
   if(['bc_workflow','bc_command'].includes(name))return commandError?{error:{message:commandError}}:{data:{id:args.p_action==='quote.convert'?'j1':'created'}};
   if(name==='bc_document_finish')return {data:{id:args.p_id}};
   if(name==='bc_report')return {data:{currency:'AED',rows:args.p_kind==='trial_balance'?[{account:'1000 Bank',debit:'1000.00',credit:'0.00',balance:'1000.00'},{account:'2100 Payables',debit:'0.00',credit:'1000.00',balance:'-1000.00'}]:[]}};
-  if(name==='bc_read'){const data={overview:{active_jobs:'1',customers:'1',receivables:'0',pending_bills:'0',jobs:[]},customers:[{id:'c1',name:'Customer',code:'C1',currency:'AED',data:{}}],suppliers:[{id:'s1',name:'Carrier',code:'S1',data:{}}],job,jobs:[],roles:[],members:[],invoices:[],invoice:{id:'invoice-created',number:'INV-000001',status:'Draft',currency:'AED',fx_rate:'1',invoice_date:'2026-10-27',due_date:'2026-11-27',subtotal:'1600.00',tax_total:'80.00',total:'1680.00',paid:'0.00',items:[],receipts:[],snapshot:{company:{name:'Binderclip',address:'',trn:''},customer:{name:'Customer',data:{}}}},journal:[]};return {data:data[args.p_kind]??[]};}
+  if(name==='bc_read'){const data={overview:{active_jobs:'1',customers:'1',receivables:'0',pending_bills:'0',jobs:[]},customers:noCustomers?[]:[{id:'c1',name:'Customer',code:'C1',currency:'AED',data:{},created_by_name:'Admin1',created_at:'2026-10-27T09:30:00Z',updated_by_name:'Operations editor',updated_at:'2026-10-27T10:45:00Z'}],suppliers:[{id:'s1',name:'Carrier',code:'S1',data:{}}],job,jobs:[],roles:[],members:[],invoices:[],invoice:{id:'invoice-created',number:'INV-000001',status:'Draft',currency:'AED',fx_rate:'1',invoice_date:'2026-10-27',due_date:'2026-11-27',subtotal:'1600.00',tax_total:'80.00',total:'1680.00',paid:'0.00',items:[],receipts:[],snapshot:{company:{name:'Binderclip',address:'',trn:''},customer:{name:'Customer',data:{}}}},journal:[]};return {data:data[args.p_kind]??[]};}
   if(name==='bc_workspace'){const data={enquiries:[enquiry],quotes:[quote],quote,quote_print:{...quote,lines:lines.filter(l=>l.side==='SELL')},tasks:[],assignees:[{id:'m1',name:'Operations'}],payables:[bill],job_workspace:{events:[],tasks:[],documents:[],requirements:[]},search:{jobs:[job],customers:[],suppliers:[],invoices:[],enquiries:[],quotes:[quote]}};return {data:data[args.p_kind]};}
   throw new Error('Unexpected RPC '+name);
  }
@@ -126,6 +126,16 @@ test('authenticated freight workspace renders and submits complete workflows',as
    await click('[data-do="billing-start"]');await wait(()=>w.document.getElementById('editor').open);
    await submit({job_id:'j1',invoice_date:'2026-10-27',due_date:'2026-11-27'});
    await wait(()=>w.location.hash==='#invoice/invoice-created');assert.ok(calls.some(c=>c.args.p_kind==='invoice.create'&&c.args.p_data.job_ids[0]==='j1'));
+  });
+  await t.test('entry history is visible, old environment label is removed and detail navigation stays selected',async()=>{
+   await route('customers','Customers');
+   const history=w.document.querySelector('#screen .record-tracking');assert.ok(history);assert.match(history.textContent,/Admin1/);assert.match(history.textContent,/Operations editor/);assert.match(history.textContent,/13:30 GST/);
+   assert.equal(w.document.querySelector('.environment'),null);assert.ok(w.document.getElementById('nav-search'));
+   await route('job/j1','Job documents');assert.equal(w.document.querySelector('[href="#jobs"]').getAttribute('aria-current'),'page');
+  });
+  await t.test('job creation explains missing customer prerequisite without opening a broken form',async()=>{
+   noCustomers=true;await route('jobs','Jobs');await click('[data-do="new-job"]');
+   assert.equal(w.document.getElementById('editor').open,false);assert.match(w.document.getElementById('notice').textContent,/Create a customer/);noCustomers=false;
   });
   await t.test('sidebar follows setup, operations, billing and finance order',()=>{
    const routes=[...w.document.querySelectorAll('#nav a')].map(a=>a.hash);

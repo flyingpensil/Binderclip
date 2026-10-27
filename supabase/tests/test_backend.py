@@ -94,7 +94,7 @@ class BackendTests(unittest.TestCase):
         customer=self.command('master.save',{'kind':'customers','name':'Tracked','created_by':str(uuid.uuid4()),'created_at':'1990-01-01','currency':'AED'})['id']
         before=self.read('customers',customer)[0]
         self.assertEqual(before['created_by'],str(ADMIN));self.assertEqual(before['created_by_name'],'Admin1')
-        self.assertTrue(before['created_at'].startswith('2026-') or before['created_at']>'2026-')
+        self.assertTrue(before['created_at']);self.assertFalse(before['created_at'].startswith('1990-'))
         self.assertIsNone(before['updated_at'])
         other=uuid.uuid4();session=uuid.uuid4()
         self.owner();self.conn.execute('insert into auth.users values(%s,%s,now(),null)',(other,'editor@example.test'))
@@ -384,12 +384,18 @@ class BackendTests(unittest.TestCase):
         self.denied(lambda:self.costsheet('apply',{'job_id':job,'quote_id':quote}))
 
     def test_quote_copy_does_not_bypass_source_cost_visibility(self):
+        self.owner();other=uuid.uuid4();other_session=uuid.uuid4()
+        self.conn.execute('insert into auth.users values(%s,%s,now(),null)',(other,'other@example.com'))
+        self.conn.execute("insert into auth.identities(user_id,provider) values(%s,'google')",(other,))
+        self.conn.execute('insert into auth.sessions values(%s,%s,null)',(other_session,other))
+        member=self.conn.execute("insert into binderclip.members(tenant_id,user_id,email,display_name) values(%s,%s,'other@example.com','Other operator') returning id",(self.tenant,other)).fetchone()[0]
+        self.conn.execute("insert into binderclip.member_roles(tenant_id,member_id,role_id) select %s,%s,id from binderclip.roles where tenant_id=%s and name='Company administrator'",(self.tenant,member,self.tenant))
+        self.conn.execute("select set_config('request.jwt.claims',%s,true)",(json.dumps({'sub':str(other),'session_id':str(other_session)}),));self.client()
         _,quote=self.quote_fixture();self.workflow('quote.approve',{'id':quote})
         source=self.workspace('quote',quote)
+        self.owner();self.conn.execute("select set_config('request.jwt.claims',%s,true)",(json.dumps({'sub':str(ADMIN),'session_id':str(SESSION)}),));self.client()
         job=self.command('job.save',{'number':'SCOPED-JOB','customer_id':source['customer_id'],'data':source['data']})['id']
-        self.owner();other=uuid.uuid4();self.conn.execute('insert into auth.users values(%s,%s,now(),null)',(other,'other@example.com'))
-        self.conn.execute('update binderclip.quotations set created_by=%s where id=%s',(other,quote))
-        self.conn.execute("update binderclip.grants set scope='self' where path='costs.detail.manage' and action='R'");self.client()
+        self.owner();self.conn.execute("update binderclip.grants set scope='self' where path='costs.detail.manage' and action='R'");self.client()
         self.assertEqual(self.costsheet('quotes',{'job_id':job}),[])
         self.denied(lambda:self.costsheet('apply',{'job_id':job,'quote_id':quote}))
         self.denied(lambda:self.workflow('quote.convert',{'id':quote,'job_number':'LEAK'}))
