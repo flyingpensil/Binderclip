@@ -50,6 +50,8 @@ SQLite is a **single-user development preview**, not the financial production da
 
 ## Typical workflow
 
+Use the dedicated **Cost sheets** workspace to review supplier costs against customer revenue, apply approved quotations, correct unbilled charges with audit reasons, approve profitability, and create final invoices. See [the cost-sheet walkthrough](docs/cost-sheets.md) for the exact controls and sequence. The workspace activates after database upgrade 008.
+
 The freight release adds **Sales → Enquiry → Quotation → Approval → Convert to job**, private job files, required document/task stage checks, shipment milestones, a work queue, supplier payments and ageing/trial-balance/income/profitability reports. It is activated after database upgrades 005–006. See the [Bridge LCS feature comparison](docs/bridge-lcs-gap-analysis.md) for what works and what remains; this release does not claim complete product parity.
 
 1. Create a customer and supplier, optionally a rate card and tariffs.

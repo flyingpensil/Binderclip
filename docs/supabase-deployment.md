@@ -15,12 +15,15 @@ Run these files in the **new, empty Binderclip project's SQL Editor**, in order,
 5. `supabase/migrations/005_freight_workflow.sql`
 6. `supabase/migrations/006_private_documents.sql`
 7. `supabase/migrations/007_audit_scope.sql`
+8. `supabase/migrations/008_cost_sheet_workspace.sql`
 
 Files 001–003 are first-install migrations, not scripts to rerun over an existing installation. Bootstrap refuses to replace an existing company. File 004 is a function-only upgrade for existing installations. Bootstrap creates Admin1 (`inventory.choco@gmail.com`) and four role presets, with no sample transactions. The Google account binds to the invited membership on first verified sign-in.
 
 Files 005–006 add freight sales, operational tasks/milestones, stage document gates, supplier payments and finance reports. They add no users or sample jobs. Apply them once to an existing project after 004; the real Supabase `storage` schema must exist. The new private bucket is `binderclip-documents`, with a 10 MB per-file limit and PDF/PNG/JPEG/TXT/CSV allowlist. Business tables retain private-schema isolation and RLS. Storage policies grant only exact registered object paths; no overwrite/delete policy is provided. Uploaded bytes and MIME metadata must match registration before a document becomes Ready. A failed upload remains Pending and never satisfies a stage requirement. Pending metadata/orphan cleanup and malware scanning require a future retention service.
 
 After these upgrades pass their live installation checks, set `"features": {"freight": true}` in `supabase-config.json`. Refresh the app to load the expanded permission catalogue. Existing Company administrator roles receive the new process grants; other roles must be explicitly configured in Users & access. The new RPCs (`bc_workflow`, `bc_workspace`, `bc_report`, `bc_document_access`, `bc_document_finish`) are authenticated-only and recheck their resource scopes. See [feature comparison and acceptance scope](bridge-lcs-gap-analysis.md).
+
+Upgrade 008 adds the dedicated [cost-sheet workbench](cost-sheets.md). After installation enable `features.costSheets` alongside `features.freight`. It introduces scoped charge correction history and separate edit/disapprove/apply/print grants, without modifying posted journal history.
 
 All business tables are in the private `binderclip` schema, with RLS enabled and no direct anonymous/authenticated grants. Only three authenticated RPCs are public: `bc_session`, `bc_read`, `bc_command`. Each checks verified Google identity, active session, company membership and process/data scope. Dashboard totals and exports respect their own grants. Roles combine positive grants; no grant means no access. Scoped report export additionally requires `can_export`.
 

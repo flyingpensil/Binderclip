@@ -15,6 +15,7 @@ test('authenticated freight workspace renders and submits complete workflows',as
  const paths=['overview.dashboard.view','jobs.list.manage','costs.detail.manage','customers.list.manage','suppliers.list.manage','sales.enquiries.manage','sales.quotes.manage','sales.quotes.approve','sales.quotes.convert','sales.quotes.print','operations.timeline.manage','operations.tasks.manage','operations.documents.manage','operations.requirements.manage','finance.payments.manage','reports.finance.view','reports.journal.view','settings.roles.manage','settings.members.manage','settings.company.manage','invoicing.list.manage'];
  const member={tenant_id:'tenant',display_name:'Admin1',branch:'Dubai',email:'admin@example.test',company:{name:'Binderclip',currency:'AED'},grants:paths.flatMap(path=>['C','R','U','X'].map(action=>({path,action,scope:'global',can_export:true})))};
  const calls=[],uploads=[];let commandError=null,uploadError=null;
+ let printed='';w.print=()=>{printed=w.document.getElementById('screen').textContent;};
  member.grants.push(...['costs.detail.apply','costs.detail.disapprove','costs.detail.print','costs.detail.approve','costs.detail.book','costs.detail.match','invoicing.detail.generate'].flatMap(path=>['C','R','U','X'].map(action=>({path,action,scope:'global',can_export:true}))));
  const enquiry={id:'e1',number:'ENQ-1',customer_id:'c1',subject:'Import machinery',customer_name:'Customer',status:'Pending',data:{pol:'Shanghai',pod:'Jebel Ali',mode:'Ocean'}};
  const lines=[{id:'buy1',side:'BUY',service:'Carrier',quantity:'2.000',unit_rate:'500.00',tax_rate:'5.00'},{id:'sell1',side:'SELL',service:'Freight',quantity:'2.000',unit_rate:'800.00',tax_rate:'5.00'}];
@@ -90,6 +91,8 @@ test('authenticated freight workspace renders and submits complete workflows',as
    await click('[data-line="sell1"]');await wait(()=>w.document.getElementById('editor').open);
    await submit({unit_rate:'850.00',reason:'Agreed rate correction'});
    assert.ok(calls.some(c=>c.name==='bc_costsheet'&&c.args.p_action==='line.save'&&c.args.p_data.line_id==='sell1'&&c.args.p_data.reason==='Agreed rate correction'));
+   await click('[data-do="costsheet-print"]');await wait(()=>printed.includes('INTERNAL COST SHEET'));
+   assert.match(printed,/550.00/);assert.match(printed,/500.00/);
   });
   await t.test('approved cost sheet offers invoice creation rather than price editing',async()=>{
    costSheet.approved=true;await route('sales','Sales pipeline');await route('costsheet/j1','Approved and ready');
