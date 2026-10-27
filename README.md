@@ -50,6 +50,8 @@ SQLite is a **single-user development preview**, not the financial production da
 
 ## Typical workflow
 
+The freight release adds **Sales → Enquiry → Quotation → Approval → Convert to job**, private job files, required document/task stage checks, shipment milestones, a work queue, supplier payments and ageing/trial-balance/income/profitability reports. It is activated after database upgrades 005–006. See the [Bridge LCS feature comparison](docs/bridge-lcs-gap-analysis.md) for what works and what remains; this release does not claim complete product parity.
+
 1. Create a customer and supplier, optionally a rate card and tariffs.
 2. Create a draft job. Add BUY estimates linked to suppliers and SELL charges; use the customer's negotiated tariff or a default rate card as a starting point.
 3. **Book job & accrue** to recognize estimated expense. Estimates become fixed for this foundation.

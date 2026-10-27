@@ -1,5 +1,8 @@
 {
   "enabled": true,
   "url": "https://qdglfydbwbhzeixgpiro.supabase.co",
-  "publishableKey": "sb_publishable_likxDNgG68IuZw2WMCCTXw_bbf-jmAn"
+  "publishableKey": "sb_publishable_likxDNgG68IuZw2WMCCTXw_bbf-jmAn",
+  "features": {
+    "freight": true
+  }
 }
