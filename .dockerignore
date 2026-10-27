@@ -7,3 +7,4 @@ __pycache__
 staticfiles
 docs/screenshots
 pages-dist
+.github

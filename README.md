@@ -4,9 +4,9 @@ A logistics ERP for freight forwarding and 3PL operations. Built with **Django 5
 
 ## Client deployment and Google login
 
-Use the [client launch guide](docs/client-launch.md) and [Render Blueprint](render.yaml) to deploy the actual application and PostgreSQL. The initial account is **Admin1**, signing in with **inventory.choco@gmail.com**, with full company administrator access. No other users or sample transactions are provisioned on a fresh deployment. Google OAuth credentials must be entered in Render before sign-in can work.
+Use the [free Northflank setup](docs/free-hosting.md) to deploy the application and PostgreSQL for client evaluation. Render was rejected because it required paid hosting; no Render services were created. The initial account is **Admin1**, signing in with **inventory.choco@gmail.com**, with full company administrator access. No other users or sample transactions are provisioned on a fresh deployment. Google OAuth credentials must be entered in the host's secret store before sign-in can work.
 
-**GitHub Pages hosts the client entry page, not Django.** Set its public `BINDERCLIP_APP_URL` repository variable (or `deployment.json`) to the actual Render URL after deployment. The application then provides the complete implemented workspace and **Users & access → Add user** for authorized client accounts. See the guide for exact Google callback setup, first sign-in and user assignment.
+**GitHub Pages hosts the client entry page, not Django.** Set its public `BINDERCLIP_APP_URL` repository variable (or `deployment.json`) to the actual HTTPS backend URL after deployment. The application then provides the complete implemented workspace and **Users & access → Add user** for authorized client accounts. Northflank's free Sandbox is an evaluation tier; see the guide for its limits, exact Google callback setup, first sign-in and user assignment.
 
 ## Start locally on Windows
 

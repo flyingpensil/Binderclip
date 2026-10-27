@@ -30,3 +30,37 @@ jobs:
       - run: python manage.py makemigrations --check --dry-run
       - run: python manage.py collectstatic --noinput
       - run: python manage.py test erp.tests --verbosity 2
+  container:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:17-alpine
+        env:
+          POSTGRES_DB: binderclip
+          POSTGRES_USER: binderclip
+          POSTGRES_PASSWORD: ci-only-password
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd "pg_isready -U binderclip -d binderclip"
+          --health-interval 5s --health-retries 10
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build free-hosting image without production secrets
+        run: docker build -f Dockerfile.northflank -t binderclip-smoke .
+      - name: Start against isolated CI PostgreSQL
+        run: >-
+          docker run -d --name binderclip-smoke --network host
+          -e DATABASE_URL='postgresql://binderclip:ci-only-password@127.0.0.1:5432/binderclip?sslmode=disable'
+          -e SECRET_KEY='ci-container-test-only-not-a-production-secret-key-123456789'
+          -e APP_BASE_URL=https://localhost
+          -e TRUST_PROXY=true
+          -e INITIAL_ADMIN_EMAIL=inventory.choco@gmail.com
+          binderclip-smoke
+      - name: Wait for application readiness
+        run: |
+          test "$(curl --retry 20 --retry-all-errors --retry-delay 2 --fail --silent --show-error -H 'X-Forwarded-Proto: https' http://127.0.0.1:8000/health/)" = "ok"
+      - name: Verify Admin1, secure login page and baked static assets
+        run: docker exec binderclip-smoke python scripts/check_container.py
+      - name: Container diagnostics
+        if: failure()
+        run: docker logs binderclip-smoke
