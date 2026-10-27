@@ -123,7 +123,12 @@ begin
   select * into strict quote_row from binderclip.quotations where id=target and tenant_id=p_tenant for update;perform binderclip.require(p_tenant,'sales.quotes.manage','U',quote_row.created_by,quote_row.branch);
   if quote_row.status<>'Draft' then raise exception 'Quote lines are fixed after approval';end if;
   if p_data->>'side'='BUY' and not exists(select 1 from binderclip.masters c where c.id=(p_data->>'supplier_id')::uuid and c.tenant_id=p_tenant and c.kind='suppliers' and binderclip.allowed(p_tenant,'suppliers.list.manage','R',c.created_by,c.branch)) then raise exception 'Supplier unavailable';end if;
+  if nullif(p_data->>'line_id','') is not null then
+   update binderclip.quotation_lines set side=p_data->>'side',service=p_data->>'service',supplier_id=case when p_data->>'side'='BUY' then nullif(p_data->>'supplier_id','')::uuid else null end,quantity=(p_data->>'quantity')::numeric,unit_rate=(p_data->>'unit_rate')::numeric,tax_rate=coalesce((p_data->>'tax_rate')::numeric,5),exemption=coalesce(p_data->>'exemption','') where id=(p_data->>'line_id')::uuid and quote_id=target and tenant_id=p_tenant returning id into result;
+   if not found then raise exception 'Quote line unavailable';end if;
+  else
   insert into binderclip.quotation_lines(tenant_id,quote_id,side,service,supplier_id,quantity,unit_rate,tax_rate,exemption) values(p_tenant,target,p_data->>'side',p_data->>'service',case when p_data->>'side'='BUY' then nullif(p_data->>'supplier_id','')::uuid else null end,(p_data->>'quantity')::numeric,(p_data->>'unit_rate')::numeric,coalesce((p_data->>'tax_rate')::numeric,5),coalesce(p_data->>'exemption','')) returning id into result;
+  end if;
  elsif p_action in('quote.approve','quote.cancel','quote.convert') then
   select * into strict quote_row from binderclip.quotations where id=target and tenant_id=p_tenant for update;
   if p_action='quote.approve' then

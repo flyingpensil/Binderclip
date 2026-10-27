@@ -237,10 +237,20 @@ class BackendTests(unittest.TestCase):
         self.denied(lambda:self.workflow('quote.convert',{'id':quote,'job_number':'DENIED'}))
         self.assertEqual(self.workspace('quote',quote)['status'],'Approved')
 
+    def test_draft_quote_line_can_be_corrected_but_approval_freezes_it(self):
+        _,quote=self.quote_fixture()
+        line=next(l for l in self.workspace('quote',quote)['lines'] if l['side']=='SELL')
+        payload={'id':quote,'line_id':line['id'],'side':'SELL','service':'Corrected freight','quantity':'2','unit_rate':'850','tax_rate':'5'}
+        self.workflow('quote.line',payload)
+        self.assertEqual(next(l for l in self.workspace('quote',quote)['lines'] if l['id']==line['id'])['unit_rate'],'850.00')
+        self.workflow('quote.approve',{'id':quote})
+        self.denied(lambda:self.workflow('quote.line',{**payload,'unit_rate':'1'}))
+
     def test_task_gate_blocks_and_then_allows_booking(self):
         _,_,job,_=self.fixtures()
         task=self.workflow('task.add',{'job_id':job,'title':'Verify cargo','due_on':'2026-10-27','required_before':'Booked'})['id']
         self.denied(lambda:self.command('job.book',{'id':job}))
+        self.assertEqual(self.read('journal'),[])
         self.workflow('task.complete',{'id':task})
         self.denied(lambda:self.workflow('task.complete',{'id':task}))
         self.command('job.book',{'id':job})

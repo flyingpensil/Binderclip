@@ -16,7 +16,7 @@ test('authenticated freight workspace renders and submits complete workflows',as
  const member={tenant_id:'tenant',display_name:'Admin1',branch:'Dubai',email:'admin@example.test',company:{name:'Binderclip',currency:'AED'},grants:paths.flatMap(path=>['C','R','U','X'].map(action=>({path,action,scope:'global',can_export:true})))};
  const calls=[],uploads=[];let commandError=null,uploadError=null;
  const enquiry={id:'e1',number:'ENQ-1',customer_id:'c1',subject:'Import machinery',customer_name:'Customer',status:'Pending',data:{pol:'Shanghai',pod:'Jebel Ali',mode:'Ocean'}};
- const lines=[{side:'BUY',service:'Carrier',quantity:'2.000',unit_rate:'500.00',tax_rate:'5.00'},{side:'SELL',service:'Freight',quantity:'2.000',unit_rate:'800.00',tax_rate:'5.00'}];
+ const lines=[{id:'buy1',side:'BUY',service:'Carrier',quantity:'2.000',unit_rate:'500.00',tax_rate:'5.00'},{id:'sell1',side:'SELL',service:'Freight',quantity:'2.000',unit_rate:'800.00',tax_rate:'5.00'}];
  const quote={id:'q1',number:'QUO-1',customer_id:'c1',customer_name:'Customer',company_name:'Binderclip',enquiry_id:'e1',status:'Draft',valid_until:'2099-01-01',currency:'AED',fx_rate:'1',terms:'Net 30',data:enquiry.data,lines};
  const bill={id:'b1',number:'BILL-1',supplier_name:'Carrier',job_number:'J1',total:'1000.00',paid:'0.00',currency:'AED',invoice_date:'2026-01-01'};
  const job={id:'j1',number:'J1',customer:{name:'Customer'},data:enquiry.data,status:'Draft',invoices:[],audit:[]};
@@ -44,6 +44,9 @@ test('authenticated freight workspace renders and submits complete workflows',as
   });
   await t.test('quotation displays exact sell totals and approval uses a server command',async()=>{
    await route('quote/q1','QUO-1');assert.match(w.document.getElementById('screen').textContent,/1,680.00/);
+   await click('[data-line="sell1"]');await wait(()=>w.document.getElementById('editor').open);
+   await submit({unit_rate:'850.00'});
+   assert.ok(calls.some(c=>c.args.p_action==='quote.line'&&c.args.p_data.line_id==='sell1'&&c.args.p_data.unit_rate==='850.00'));
    await click('[data-process="quote.approve"]');await wait(()=>calls.some(c=>c.args.p_action==='quote.approve'));
   });
   await t.test('server rejection is shown on form and leaves it open',async()=>{
