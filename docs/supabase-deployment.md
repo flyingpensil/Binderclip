@@ -11,8 +11,9 @@ Run these files in the **new, empty Binderclip project's SQL Editor**, in order,
 1. `supabase/migrations/001_binderclip.sql`
 2. `supabase/migrations/002_api.sql`
 3. `supabase/migrations/003_initial_admin.sql`
+4. `supabase/migrations/004_scoped_drilldowns.sql`
 
-These are first-install migrations, not scripts to rerun over an existing installation. Bootstrap refuses to replace an existing company. It creates Admin1 (`inventory.choco@gmail.com`) and four role presets, with no sample transactions. The Google account binds to the invited membership on first verified sign-in.
+Files 001–003 are first-install migrations, not scripts to rerun over an existing installation. Bootstrap refuses to replace an existing company. File 004 is a function-only upgrade for existing installations. Bootstrap creates Admin1 (`inventory.choco@gmail.com`) and four role presets, with no sample transactions. The Google account binds to the invited membership on first verified sign-in.
 
 All business tables are in the private `binderclip` schema, with RLS enabled and no direct anonymous/authenticated grants. Only three authenticated RPCs are public: `bc_session`, `bc_read`, `bc_command`. Each checks verified Google identity, active session, company membership and process/data scope. Dashboard totals and exports respect their own grants. Roles combine positive grants; no grant means no access. Scoped report export additionally requires `can_export`.
 
@@ -37,7 +38,7 @@ After SQL and Auth are configured, set `enabled` to `true` in `supabase-config.j
 
 Sign in as Admin1, then enter the legal company name, TRN and address in Company profile. Create a customer and supplier; optionally associate a negotiated rate card. Create a job, enter buy/sell estimates, book it to accrue costs, match supplier bills, approve any variance with a reason, approve the cost sheet, generate/approve/issue the invoice, record receipts, lock the cost sheet and close the delivered job. Financial postings use PostgreSQL numeric arithmetic, immutable journals and deferred balance constraints.
 
-To add a client: **Users & access → Add user**, enter their Google email, branch and roles, then save. Share the Pages URL yourself; this action does not send email. Each client signs in using their own Google account. Start with the Read-only role unless they need operational or finance actions. Disabling membership blocks subsequent RPCs; existing screens clear when the periodic access check detects the change. Admin1 cannot disable or reassign itself, or edit its own assigned role.
+To add a client: **Users & access → Add user**, enter their Google email, branch and roles, then save. Share the Pages URL yourself; this action does not send email. Each client signs in using their own Google account. While Google OAuth remains in Testing, also add that email in the Binderclip Google Cloud project's **Audience → Test users**. Admin1 is already on that list. Publishing the OAuth audience requires completing Google's branding requirements; company data access remains controlled by Binderclip membership and roles. Start with the Read-only role unless they need operational or finance actions. Disabling membership blocks subsequent RPCs; existing screens clear when the periodic access check detects the change. Admin1 cannot disable or reassign itself, or edit its own assigned role.
 
 ## Scope and operating limits
 
