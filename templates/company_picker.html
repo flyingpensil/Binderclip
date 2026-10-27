@@ -1,0 +1,10 @@
+{% if company_choices|length > 1 %}
+<form method="post" action="{% url 'switch-company' %}" class="company-switcher">
+  {% csrf_token %}
+  <label for="company-choice" class="muted">Switch company</label>
+  <select id="company-choice" name="tenant_id">
+    {% for choice in company_choices %}<option value="{{ choice.tenant_id }}" {% if choice.tenant_id == request.membership.tenant_id %}selected{% endif %}>{{ choice.tenant.name }}</option>{% endfor %}
+  </select>
+  <button class="button" type="submit">Switch →</button>
+</form>
+{% endif %}

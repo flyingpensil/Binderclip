@@ -1,0 +1,12 @@
+{% if tariff_suggestions %}
+<section class="panel">
+  <div class="panel-heading"><div><h2>Start from a negotiated tariff</h2><p>Customer rate card, or company default. Select a benchmark and confirm its supplier, quantity, tax and exchange rate below.</p></div></div>
+  <form method="get" class="filter-bar">
+    <select name="tariff" aria-label="Tariff benchmark" required>
+      {% for tariff in tariff_suggestions %}<option value="{{ tariff.pk }}">{{ tariff.price_list.name }} · {{ tariff.service }} / {{ tariff.unit }} · {{ tariff.price_list.currency }}</option>{% endfor %}
+    </select>
+    <select name="side" aria-label="Buy or sell"><option value="SELL">Sell benchmark</option><option value="BUY">Buy benchmark</option></select>
+    <button class="button" type="submit">Load tariff ↓</button>
+  </form>
+</section>
+{% endif %}
