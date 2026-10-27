@@ -402,6 +402,20 @@ class BackendTests(unittest.TestCase):
             finally:
                 owner.execute('delete from binderclip.number_sequences where tenant_id=%s',(tenant,));owner.execute('delete from binderclip.companies where id=%s',(tenant,))
 
+    def test_billing_creation_uses_existing_permissions_and_validates_dates(self):
+        _,supplier,job,buy=self.fixtures()
+        self.command('job.book',{'id':job});self.bill(supplier,job,buy);self.command('cost.approve',{'id':job})
+        payload={'job_ids':[job],'invoice_date':'2026-10-27','due_date':'2026-11-26'}
+        def create(data):return self.conn.execute('select public.bc_billing(%s,%s,%s)',(self.tenant,'invoice.create',Jsonb(data))).fetchone()[0]
+        self.denied(lambda:create({**payload,'due_date':'2026-10-26'}))
+        self.owner();self.conn.execute("update binderclip.grants set scope='none' where path='invoicing.detail.generate'");self.client()
+        self.denied(lambda:create(payload))
+        self.owner();self.conn.execute("update binderclip.grants set scope='global' where path='invoicing.detail.generate'");self.client()
+        invoice=create(payload)['id']
+        self.assertEqual(self.read('invoice',invoice)['number'],'INV-000001')
+        self.assertEqual(self.read('invoice',invoice)['due_date'],'2026-11-26')
+        self.denied(lambda:create(payload))
+
     def test_costsheet_correction_disapproval_and_invoice_freeze(self):
         _,supplier,job,buy=self.fixtures()
         sell=next(l for l in self.read('job',job)['lines'] if l['side']=='SELL')

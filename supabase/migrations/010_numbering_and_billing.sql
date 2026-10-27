@@ -65,18 +65,23 @@ create unique index on binderclip.supplier_payments(tenant_id,document_number);
 create unique index on binderclip.job_documents(tenant_id,document_number);
 revoke all on function binderclip.number_prefix(text),binderclip.next_number(uuid,text),binderclip.assign_number() from public,anon,authenticated;
 
-create function public.bc_billing(p_tenant uuid,p_kind text default 'invoice_queue') returns jsonb language plpgsql security definer set search_path='' as $$
-declare m binderclip.members:=binderclip.member(p_tenant);result jsonb;
+create function public.bc_billing(p_tenant uuid,p_kind text default 'invoice_queue',p_data jsonb default '{}') returns jsonb language plpgsql security definer set search_path='' as $$
+declare m binderclip.members:=binderclip.member(p_tenant);result jsonb;invoice_id uuid;
 begin
- if p_kind='invoice_queue' then
+ if p_kind='invoice.create' then
+  if jsonb_typeof(p_data)<>'object' or coalesce((p_data->>'invoice_date')::date,current_date)>current_date or (p_data->>'due_date')::date<coalesce((p_data->>'invoice_date')::date,current_date) then raise exception 'Check invoice and due dates';end if;
+  result:=public.bc_command(p_tenant,'invoice.generate',jsonb_build_object('job_ids',p_data->'job_ids'));invoice_id:=(result->>'id')::uuid;
+  update binderclip.invoices set invoice_date=coalesce((p_data->>'invoice_date')::date,current_date),due_date=coalesce((p_data->>'due_date')::date,due_date) where id=invoice_id;
+ elsif p_kind='invoice_queue' then
   select coalesce(jsonb_agg(to_jsonb(s) order by s.created_at desc),'[]') into result from(
-   select j.id,j.number,j.costsheet_number,j.customer_id,c.name customer_name,j.status,j.approved,j.locked_at,j.created_at,
+   select j.id,j.number,j.costsheet_number,j.customer_id,c.name customer_name,coalesce(nullif(c.data->>'credit_days','')::integer,30) credit_days,j.status,j.approved,j.locked_at,j.created_at,
    (select count(*) from binderclip.cost_lines l where l.job_id=j.id and l.side='BUY') buy_count,
    (select count(*) from binderclip.supplier_bills b where b.job_id=j.id and b.status='Matched') matched_count,
    (select count(*) from binderclip.cost_lines l where l.job_id=j.id and l.side='SELL') charge_count,
    (select count(*) from binderclip.cost_lines l where l.job_id=j.id and l.side='SELL' and not exists(select 1 from binderclip.invoice_items x where x.line_id=l.id)) unbilled_count,
    (select count(distinct (l.currency,l.fx_rate)) from binderclip.cost_lines l where l.job_id=j.id and l.side='SELL' and not exists(select 1 from binderclip.invoice_items x where x.line_id=l.id)) billing_groups,
-   (select min(l.currency) from binderclip.cost_lines l where l.job_id=j.id and l.side='SELL') currency
+   (select min(l.currency) from binderclip.cost_lines l where l.job_id=j.id and l.side='SELL') currency,
+   (select min(l.fx_rate) from binderclip.cost_lines l where l.job_id=j.id and l.side='SELL') fx_rate
    from binderclip.jobs j join binderclip.masters c on c.id=j.customer_id
    where j.tenant_id=p_tenant and j.status not in('Closed','Cancelled') and binderclip.allowed(p_tenant,'jobs.list.manage','R',j.created_by,j.branch)
    and binderclip.allowed(p_tenant,'invoicing.detail.generate','C',j.created_by,j.branch)
@@ -88,8 +93,8 @@ begin
  else raise exception 'Unknown billing view';end if;
  return binderclip.decimals(result);
 end $$;
-revoke all on function public.bc_billing(uuid,text) from public,anon,authenticated;
-grant execute on function public.bc_billing(uuid,text) to authenticated;
+revoke all on function public.bc_billing(uuid,text,jsonb) from public,anon,authenticated;
+grant execute on function public.bc_billing(uuid,text,jsonb) to authenticated;
 -- Updated command and cost-sheet definitions follow below.
 
 create or replace function public.bc_command(p_tenant uuid,p_action text,p_data jsonb default '{}') returns jsonb language plpgsql security definer set search_path='' as $$

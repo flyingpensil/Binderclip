@@ -5,3 +5,5 @@
 .preserve-lines{white-space:pre-wrap;overflow-wrap:anywhere}.filter-bar label{display:flex;flex-direction:column;gap:5px;font-size:10px}.sidebar nav{max-height:calc(100vh - 315px);overflow-y:auto}.sidebar .nav-link{padding-top:8px;padding-bottom:8px}.activity-list p{padding:10px 0}.invoice-paper .preserve-lines{white-space:pre-wrap}
 
 .costsheet-flow{display:flex;gap:10px;flex-wrap:wrap;margin:0 0 22px}.costsheet-flow span{font-size:11px;border:1px solid #dce8e2;padding:9px 12px;border-radius:7px;background:#fff;color:#87958e}.costsheet-flow .done{color:#08796b;background:#eaf6ef;border-color:#b8dbcc}
+
+.nav-section-label{padding:15px 10px 5px;color:#829b94;font-size:8px;letter-spacing:.7px;text-transform:uppercase;font-weight:700}.form-field input[readonly]{background:#f2f6f3;color:#75877d}.invoice-create-help{padding:18px 22px}.invoice-create-help p{margin-bottom:12px}.nav-link.active{font-weight:700}

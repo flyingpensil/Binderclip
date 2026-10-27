@@ -13,6 +13,8 @@ jobs:
       - run: node --check web/app.js
       - run: node --check web/freight.js
       - run: node --check web/costsheet.js
+      - run: node --check web/billing.js
+      - run: node --check web/currencies.js
       - uses: actions/setup-python@v5
         with:
           python-version: '3.13'
