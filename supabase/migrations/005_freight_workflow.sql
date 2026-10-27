@@ -78,8 +78,8 @@ revoke all on all tables in schema binderclip from public,anon,authenticated;
 create function binderclip.workflow_gate() returns trigger language plpgsql security definer set search_path='' as $$
 begin
  if new.status is distinct from old.status and new.status<>'Cancelled' then
-  if exists(select 1 from binderclip.job_tasks t where t.job_id=new.id and t.required_before=new.status and t.completed_at is null) then raise exception 'Complete required tasks before this job stage';end if;
-  if exists(select 1 from binderclip.document_requirements r where r.job_id=new.id and r.required_before=new.status and not exists(select 1 from binderclip.job_documents d where d.job_id=new.id and d.kind=r.kind and d.status='Ready')) then raise exception 'Upload required documents before this job stage';end if;
+  if exists(select 1 from binderclip.job_tasks t where t.job_id=new.id and array_position(array['Booked','In transit','Delivered','Closed'],t.required_before)<=array_position(array['Booked','In transit','Delivered','Closed'],new.status) and t.completed_at is null) then raise exception 'Complete required tasks before this job stage';end if;
+  if exists(select 1 from binderclip.document_requirements r where r.job_id=new.id and array_position(array['Booked','In transit','Delivered','Closed'],r.required_before)<=array_position(array['Booked','In transit','Delivered','Closed'],new.status) and not exists(select 1 from binderclip.job_documents d where d.job_id=new.id and d.kind=r.kind and d.status='Ready')) then raise exception 'Upload required documents before this job stage';end if;
  end if;return new;
 end $$;
 create trigger workflow_stage_gate before update of status on binderclip.jobs for each row execute function binderclip.workflow_gate();
@@ -204,6 +204,7 @@ begin
  elsif p_kind='tasks' then
   select coalesce(jsonb_agg(v),'[]') into result from(select to_jsonb(t)||jsonb_build_object('job_number',j.number,'assignee',(select display_name from binderclip.members where id=t.assignee_id)) v from binderclip.job_tasks t join binderclip.jobs j on j.id=t.job_id where t.tenant_id=p_tenant and binderclip.allowed(p_tenant,'operations.tasks.manage','R',j.created_by,j.branch) and binderclip.allowed(p_tenant,'jobs.list.manage','R',j.created_by,j.branch) and concat_ws(' ',t.title,j.number) ilike '%'||p_query||'%' order by t.completed_at nulls first,t.due_on limit 500)s;
  elsif p_kind='assignees' then
+  perform binderclip.require(p_tenant,'operations.tasks.manage','C',auth.uid(),member_row.branch);
   select coalesce(jsonb_agg(jsonb_build_object('id',m.id,'name',m.display_name)),'[]') into result from binderclip.members m where m.tenant_id=p_tenant and m.enabled and (m.branch=member_row.branch or binderclip.allowed(p_tenant,'settings.members.manage','R'));
  elsif p_kind='payables' then
   select coalesce(jsonb_agg(v),'[]') into result from(select to_jsonb(b)||jsonb_build_object('supplier_name',c.name,'job_number',j.number,'total',round(b.quantity*b.unit_rate,2),'paid',(select coalesce(sum(p.amount),0) from binderclip.supplier_payments p where p.bill_id=b.id)) v from binderclip.supplier_bills b join binderclip.masters c on c.id=b.supplier_id join binderclip.jobs j on j.id=b.job_id where b.tenant_id=p_tenant and b.status='Matched' and binderclip.allowed(p_tenant,'finance.payments.manage','R',b.created_by,b.branch) and concat_ws(' ',b.number,c.name,j.number) ilike '%'||p_query||'%' order by b.due_date limit 500)s;

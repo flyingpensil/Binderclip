@@ -9,4 +9,5 @@ media/
 .pytest_cache/
 pages-dist/
 pages-preview/
+node_modules/
 docs/screenshots/

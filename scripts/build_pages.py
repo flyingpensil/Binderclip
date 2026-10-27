@@ -30,7 +30,7 @@ def build(output=None, config=None):
             raise ValueError('Only a public Supabase publishable key may be packaged.')
         assets = output / 'assets'
         assets.mkdir(exist_ok=True)
-        for name in ('app.js', 'domain.js', 'fields.js', 'workspace.css'):
+        for name in ('app.js', 'domain.js', 'fields.js', 'freight.js', 'workspace.css'):
             shutil.copyfile(ROOT / 'web' / name, assets / name)
         for name in ('app.css', 'favicon.svg'):
             shutil.copyfile(ROOT / 'static' / name, assets / name)
@@ -38,7 +38,10 @@ def build(output=None, config=None):
         csp = f"default-src 'self'; script-src 'self'; style-src 'self'; connect-src 'self' {origin}; img-src 'self' data:; base-uri 'none'; object-src 'none'; frame-src 'none'; form-action 'self'"
         html = (ROOT / 'web/index.html').read_text(encoding='utf-8').replace('__CSP__', csp)
         (output / 'index.html').write_text(html, encoding='utf-8')
-        (output / 'config.json').write_text(json.dumps({'url': origin, 'publishableKey': key}), encoding='utf-8')
+        public_config = {'url': origin, 'publishableKey': key}
+        if config.get('features', {}).get('freight') is True:
+            public_config['features'] = {'freight': True}
+        (output / 'config.json').write_text(json.dumps(public_config), encoding='utf-8')
         (output / '.nojekyll').touch()
         print('Binderclip Supabase workspace built with public configuration only.')
         return

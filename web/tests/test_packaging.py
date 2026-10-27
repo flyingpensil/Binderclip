@@ -13,7 +13,7 @@ class PackagingTests(unittest.TestCase):
             self.assertEqual(json.loads((root/'config.json').read_text()), {k:config[k] for k in ('url','publishableKey')})
             self.assertEqual({p.relative_to(root).as_posix() for p in root.rglob('*') if p.is_file()}, {
                 '.nojekyll','index.html','config.json','assets/app.js','assets/domain.js','assets/fields.js',
-                'assets/workspace.css','assets/app.css','assets/favicon.svg',
+                'assets/freight.js','assets/workspace.css','assets/app.css','assets/favicon.svg',
                 'vendor/supabase-2.117.3.js','vendor/supabase-LICENSE.txt'})
             html=(root/'index.html').read_text(encoding='utf-8')
             self.assertNotIn('__CSP__',html)
