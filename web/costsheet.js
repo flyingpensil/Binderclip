@@ -20,7 +20,7 @@ export function createCostSheetUI(ctx){
   if(editable&&j.status!=='Draft'&&Number(j.buy_lines)>0&&Number(j.buy_lines)===Number(j.matched_bills)&&j.lines.some(l=>l.side==='SELL')&&can('costs.detail.approve','U'))actions.push(button('Approve cost sheet','run',{process:'cost.approve',id},true));
   if(j.approved&&!j.locked_at&&!j.has_invoices&&can('costs.detail.disapprove','U'))actions.push(actionButton('Disapprove for correction','disapprove',{job:id}));
   if(j.approved&&!j.locked_at&&unbilled(j)&&can('invoicing.detail.generate','C'))actions.push(actionButton('Create final invoice','invoice',{job:id},true));
-  if(!j.locked_at&&j.approved&&!unbilled(j)&&can('costs.detail.lock','U'))actions.push(button('Lock cost sheet','run',{process:'cost.lock',id}));
+  if(!j.locked_at&&j.approved&&!unbilled(j)&&j.invoices.length>0&&j.invoices.every(i=>!['Draft','Approved'].includes(i.status))&&can('costs.detail.lock','U'))actions.push(button('Lock cost sheet','run',{process:'cost.lock',id}));
   if(j.locked_at&&!['Closed','Cancelled'].includes(j.status)&&can('costs.detail.unlock','U'))actions.push(button('Supervisor unlock','unlock',{id}));
   if(can('costs.detail.print','X'))actions.push(actionButton('Print / Save PDF','print',{job:id}));
   const flow=[['1. Supplier costs',Number(j.buy_lines)>0],['2. Book & match',j.status!=='Draft'&&Number(j.buy_lines)>0&&Number(j.buy_lines)===Number(j.matched_bills)],['3. Customer charges',j.lines.some(l=>l.side==='SELL')],['4. Approval',j.approved],['5. Final invoice',j.has_invoices]];
@@ -39,7 +39,7 @@ export function createCostSheetUI(ctx){
   case 'line':return lineEditor(d);
   case 'apply':{const quotes=await request('quotes',{job_id:d.job});if(!quotes.length)throw new Error('No valid approved quotations are available for this customer in your role scope.');return edit('Apply quotation to this empty cost sheet',[field('quote_id','Approved quotation','select',true,{options:quotes})],{},v=>request('apply',{...v,job_id:d.job}));}
   case 'disapprove':return edit('Disapprove cost sheet for correction',[field('reason','Reason','textarea')],{},v=>request('disapprove',{...v,job_id:d.job}));
-  case 'invoice':return edit('Create final customer invoice',[field('invoice_date','Invoice date','date',true,{max:today()}),field('due_date','Payment due date','date')],{invoice_date:today(),due_date:today()},async v=>{const result=await request('invoice',{...v,job_id:d.job});location.hash=`invoice/${result.id}`;});
+  case 'invoice':{const due=new Date(today()+'T00:00:00Z');due.setUTCDate(due.getUTCDate()+Number(state.screen.row.customer.data?.credit_days??30));return edit('Create final customer invoice',[field('invoice_date','Invoice date','date',true,{max:today()}),field('due_date','Payment due date','date')],{invoice_date:today(),due_date:due.toISOString().slice(0,10)},async v=>{const result=await request('invoice',{...v,job_id:d.job});location.hash=`invoice/${result.id}`;});}
   case 'print':{const j=await request('print',{job_id:d.job});document.getElementById('screen').innerHTML=sheetPaper(j);document.body.classList.add('print-authorized');try{window.print();}finally{document.body.classList.remove('print-authorized');await render();}return;}
  }}
  document.addEventListener('submit',async event=>{if(event.target.id!=='costsheet-filter')return;event.preventDefault();if(state.busy)return;state.filters=Object.fromEntries(new FormData(event.target));await render();});
