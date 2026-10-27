@@ -343,6 +343,8 @@ class BackendTests(unittest.TestCase):
         change={'job_id':job,'line_id':sell['id'],'service':'Freight','quantity':'2','unit_rate':'850','currency':'AED','fx_rate':'1','tax_rate':'5','reason':'Updated customer agreement'}
         self.denied(lambda:self.costsheet('line.save',{**change,'line_id':buy}))
         self.costsheet('line.save',change)
+        self.assertEqual(self.costsheet('detail',{'job_id':job})['changes'][0]['reason'],'Updated customer agreement')
+        self.assertNotIn('Updated customer agreement',json.dumps(self.read('job',job)))
         self.command('cost.approve',{'id':job})
         self.denied(lambda:self.costsheet('line.save',change))
         self.denied(lambda:self.costsheet('disapprove',{'job_id':job,'reason':''}))

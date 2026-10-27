@@ -15,12 +15,15 @@ test('authenticated freight workspace renders and submits complete workflows',as
  const paths=['overview.dashboard.view','jobs.list.manage','costs.detail.manage','customers.list.manage','suppliers.list.manage','sales.enquiries.manage','sales.quotes.manage','sales.quotes.approve','sales.quotes.convert','sales.quotes.print','operations.timeline.manage','operations.tasks.manage','operations.documents.manage','operations.requirements.manage','finance.payments.manage','reports.finance.view','reports.journal.view','settings.roles.manage','settings.members.manage','settings.company.manage','invoicing.list.manage'];
  const member={tenant_id:'tenant',display_name:'Admin1',branch:'Dubai',email:'admin@example.test',company:{name:'Binderclip',currency:'AED'},grants:paths.flatMap(path=>['C','R','U','X'].map(action=>({path,action,scope:'global',can_export:true})))};
  const calls=[],uploads=[];let commandError=null,uploadError=null;
+ member.grants.push(...['costs.detail.apply','costs.detail.disapprove','costs.detail.print','costs.detail.approve','costs.detail.book','costs.detail.match','invoicing.detail.generate'].flatMap(path=>['C','R','U','X'].map(action=>({path,action,scope:'global',can_export:true}))));
  const enquiry={id:'e1',number:'ENQ-1',customer_id:'c1',subject:'Import machinery',customer_name:'Customer',status:'Pending',data:{pol:'Shanghai',pod:'Jebel Ali',mode:'Ocean'}};
  const lines=[{id:'buy1',side:'BUY',service:'Carrier',quantity:'2.000',unit_rate:'500.00',tax_rate:'5.00'},{id:'sell1',side:'SELL',service:'Freight',quantity:'2.000',unit_rate:'800.00',tax_rate:'5.00'}];
  const quote={id:'q1',number:'QUO-1',customer_id:'c1',customer_name:'Customer',company_name:'Binderclip',enquiry_id:'e1',status:'Draft',valid_until:'2099-01-01',currency:'AED',fx_rate:'1',terms:'Net 30',data:enquiry.data,lines};
  const bill={id:'b1',number:'BILL-1',supplier_name:'Carrier',job_number:'J1',total:'1000.00',paid:'0.00',currency:'AED',invoice_date:'2026-01-01'};
  const job={id:'j1',number:'J1',customer:{name:'Customer'},data:enquiry.data,status:'Draft',invoices:[],audit:[]};
+ const costSheet={...job,status:'Booked',approved:false,locked_at:null,base_currency:'AED',company_name:'Binderclip',has_invoices:false,unbilled_charges:'1',buy_lines:'1',matched_bills:'1',figures:{expected_buy:'1000.00',actual_buy:'1100.00',sell:'1600.00',expected_margin:'600.00',margin:'500.00',margin_percent:'31.25'},lines:lines.map(l=>({...l,currency:'AED',fx_rate:'1',supplier_name:l.side==='BUY'?'Carrier':null,supplier_id:l.side==='BUY'?'s1':null})),line_values:[{id:'buy1',estimated_base:'1000.00',actual_base:'1100.00'},{id:'sell1',estimated_base:'1600.00',actual_base:'1600.00'}],bills:[{id:'b1',line_id:'buy1',number:'BILL-1',quantity:'2',unit_rate:'550',currency:'AED',variance:'100.00',status:'Matched'}]};
  async function fakeRpc(name,args){calls.push({name,args});if(name==='bc_session')return {data:{user_id:'user',memberships:[member],permissions:[]}};
+  if(name==='bc_costsheet')return {data:args.p_action==='detail'||args.p_action==='print'?costSheet:args.p_action==='list'?[{...costSheet,customer_name:'Customer',sheet_status:'Open'}]:args.p_action==='quotes'?[{id:'q1',name:'QUO-1'}]:{id:'created'}};
   if(['bc_workflow','bc_command'].includes(name))return commandError?{error:{message:commandError}}:{data:{id:args.p_action==='quote.convert'?'j1':'created'}};
   if(name==='bc_document_finish')return {data:{id:args.p_id}};
   if(name==='bc_report')return {data:{currency:'AED',rows:args.p_kind==='trial_balance'?[{account:'1000 Bank',debit:'1000.00',credit:'0.00',balance:'1000.00'},{account:'2100 Payables',debit:'0.00',credit:'1000.00',balance:'-1000.00'}]:[]}};
@@ -29,7 +32,7 @@ test('authenticated freight workspace renders and submits complete workflows',as
   throw new Error('Unexpected RPC '+name);
  }
  w.supabase={createClient:()=>({rpc:fakeRpc,auth:{getUser:async()=>({data:{user:{id:'user'}}}),onAuthStateChange:()=>{},signOut:async()=>({})},storage:{from:()=>({upload:async(path,file,options)=>{uploads.push({path,file,options});return {error:uploadError};}})}})};
- globalThis.fetch=async()=>({ok:true,json:async()=>({url:'https://example.supabase.co',publishableKey:'sb_publishable_test',features:{freight:true}})});
+ globalThis.fetch=async()=>({ok:true,json:async()=>({url:'https://example.supabase.co',publishableKey:'sb_publishable_test',features:{freight:true,costSheets:true}})});
  const wait=async predicate=>{const deadline=Date.now()+2000;while(!predicate()){if(Date.now()>deadline)throw new Error('DOM condition timed out: '+w.document.body.textContent.slice(-800));await new Promise(resolve=>setImmediate(resolve));}};
  const click=async selector=>{const el=w.document.querySelector(selector);assert.ok(el,'Missing '+selector);el.click();await new Promise(resolve=>setImmediate(resolve));};
  const route=async(hash,text)=>{w.location.hash=hash;await wait(()=>w.document.getElementById('screen').textContent.includes(text)&&w.document.getElementById('breadcrumb').textContent===hash.split('/')[0]);};
@@ -79,6 +82,20 @@ test('authenticated freight workspace renders and submits complete workflows',as
    await route('reports','Financial reports');const reportForm=w.document.getElementById('freight-report-form');reportForm.elements.report.value='trial_balance';reportForm.requestSubmit();await wait(()=>w.document.getElementById('screen').textContent.includes('Difference: 0.00'));
    const search=w.document.getElementById('global-search');search.elements.q.value='J1';search.requestSubmit();await wait(()=>w.location.hash==='#search'&&w.document.getElementById('screen').textContent.includes('Search results'));
    assert.ok(calls.some(c=>c.name==='bc_workspace'&&c.args.p_kind==='search'&&c.args.p_query==='J1'));
+  });
+  await t.test('cost sheet separates actual supplier costs, revenue and profit',async()=>{
+   await route('costsheets','Job financials');await route('costsheet/j1','Supplier costs — what we pay');
+   const text=w.document.getElementById('screen').textContent;assert.match(text,/1,100.00/);assert.match(text,/1,600.00/);assert.match(text,/500.00/);assert.match(text,/31.25%/);
+   assert.match(text,/BILL-1/);assert.match(text,/Customer charges — what we bill/);
+   await click('[data-line="sell1"]');await wait(()=>w.document.getElementById('editor').open);
+   await submit({unit_rate:'850.00',reason:'Agreed rate correction'});
+   assert.ok(calls.some(c=>c.name==='bc_costsheet'&&c.args.p_action==='line.save'&&c.args.p_data.line_id==='sell1'&&c.args.p_data.reason==='Agreed rate correction'));
+  });
+  await t.test('approved cost sheet offers invoice creation rather than price editing',async()=>{
+   costSheet.approved=true;await route('sales','Sales pipeline');await route('costsheet/j1','Approved and ready');
+   assert.equal(w.document.querySelector('[data-line="sell1"]'),null);
+   await click('[data-do="costsheet-invoice"]');await wait(()=>w.document.getElementById('editor').open);
+   assert.ok(w.document.querySelector('[name=invoice_date]'));assert.ok(w.document.querySelector('[name=due_date]'));w.document.getElementById('editor').close();
   });
  }finally{dom.window.close();globalThis.fetch=oldFetch;globalThis.setInterval=oldInterval;for(const [key,descriptor]of saved)if(descriptor)Object.defineProperty(globalThis,key,descriptor);else delete globalThis[key];}
 });

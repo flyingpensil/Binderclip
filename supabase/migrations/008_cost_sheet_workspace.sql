@@ -1,5 +1,14 @@
 -- Cost-sheet workbench. Existing journal, matching, invoice and lock rules remain authoritative.
 begin;
+create table binderclip.costsheet_changes(
+ id uuid primary key default gen_random_uuid(),tenant_id uuid not null,job_id uuid not null,
+ action text not null,reason text not null default '',before_values jsonb,after_values jsonb,
+ actor uuid not null references auth.users,created_at timestamptz not null default now(),
+ foreign key(job_id,tenant_id) references binderclip.jobs(id,tenant_id));
+alter table binderclip.costsheet_changes enable row level security;
+revoke all on binderclip.costsheet_changes from public,anon,authenticated;
+create index on binderclip.costsheet_changes(tenant_id,job_id,created_at desc);
+create trigger immutable_costsheet_changes before update or delete on binderclip.costsheet_changes for each row execute function binderclip.immutable();
 insert into binderclip.permissions(path,action) values
  ('costs.detail.manage','U'),('costs.detail.disapprove','U'),('costs.detail.apply','C'),('costs.detail.print','X');
 insert into binderclip.grants(role_id,path,action,scope,can_export)
@@ -29,6 +38,7 @@ begin
    'unbilled_charges',(select count(*) from binderclip.cost_lines l where l.job_id=target and l.side='SELL' and not exists(select 1 from binderclip.invoice_items x where x.line_id=l.id)),
    'matched_bills',(select count(*) from binderclip.supplier_bills b where b.job_id=target and b.status='Matched'),
    'buy_lines',(select count(*) from binderclip.cost_lines where job_id=target and side='BUY'),
+   'changes',(select coalesce(jsonb_agg(to_jsonb(c)||jsonb_build_object('by_user',(select m.display_name from binderclip.members m where m.tenant_id=p_tenant and m.user_id=c.actor)) order by c.created_at desc),'[]') from binderclip.costsheet_changes c where c.job_id=target),
    'line_values',(select coalesce(jsonb_agg(jsonb_build_object('id',l.id,'estimated_base',binderclip.base(l.quantity,l.unit_rate,l.fx_rate),'actual_base',case when b.status='Matched' then binderclip.base(b.quantity,b.unit_rate,b.fx_rate) else binderclip.base(l.quantity,l.unit_rate,l.fx_rate) end)),'[]') from binderclip.cost_lines l left join binderclip.supplier_bills b on b.line_id=l.id where l.job_id=target));
  elsif p_action='quotes' then
   perform binderclip.require(p_tenant,'costs.detail.apply','C',job_row.created_by,job_row.branch);
@@ -78,7 +88,11 @@ begin
     end if;result:=jsonb_build_object('id',line_target);
    end if;
   end if;
-  perform binderclip.log(p_tenant,'costsheet.'||p_action,target,coalesce(reason,''));
+  insert into binderclip.costsheet_changes(tenant_id,job_id,action,reason,before_values,after_values,actor)
+   values(p_tenant,target,p_action,coalesce(reason,''),case when cost_row.id is not null then to_jsonb(cost_row) else jsonb_build_object('approved',job_row.approved) end,
+   case when line_target is not null then (select to_jsonb(c) from binderclip.cost_lines c where c.id=line_target) else jsonb_build_object('invoice_id',invoice_id,'quote_id',p_data->>'quote_id') end,auth.uid());
+  -- General job readers see the action, while correction reasons stay in scoped financial history.
+  perform binderclip.log(p_tenant,'costsheet.'||p_action,target,'');
  else raise exception 'Unknown cost sheet action';end if;
  return binderclip.decimals(result);
 end $$;
