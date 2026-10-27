@@ -25,6 +25,12 @@ class BackendTests(unittest.TestCase):
           create table auth.sessions(id uuid primary key,user_id uuid references auth.users,not_after timestamptz);
           create function auth.jwt() returns jsonb language sql stable as $f$select coalesce(nullif(current_setting('request.jwt.claims',true),''),'{}')::jsonb$f$;
           create function auth.uid() returns uuid language sql stable as $f$select nullif(auth.jwt()->>'sub','')::uuid$f$;
+          create schema storage;
+          create table storage.buckets(id text primary key,name text,public boolean,file_size_limit bigint,allowed_mime_types text[]);
+          create table storage.objects(id uuid primary key default gen_random_uuid(),bucket_id text,name text,metadata jsonb,unique(bucket_id,name));
+          alter table storage.objects enable row level security;
+          grant usage on schema storage to authenticated;
+          grant select,insert on storage.objects to authenticated;
         ''', prepare=False)
         for file in sorted((ROOT / 'supabase/migrations').glob('*.sql')):
             cls.conn.execute(file.read_text(encoding='utf-8'), prepare=False)
