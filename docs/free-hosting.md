@@ -4,7 +4,7 @@ Render has been rejected for this deployment. No Render resources or paid subscr
 
 ## Why this option
 
-Northflank's published Sandbox plan includes two services, one database addon and two jobs, with always-on compute rather than idle sleeping. Its official signup guide says no credit card is required. The platform provides HTTPS endpoints, secret groups and private database networking. This fits one Binderclip service plus one PostgreSQL database without rewriting the application.
+Northflank's published Sandbox plan includes two services, one database addon and two jobs, with always-on compute rather than idle sleeping. Its official signup guide says no credit card is required, **but the live dashboard for this account requires card verification before creating an addon**. The dashboard states that Sandbox resources will not be charged. No addon has been created; proceed only if card verification is acceptable. The platform provides HTTPS endpoints, secret groups and private database networking. This fits one Binderclip service plus one PostgreSQL database without rewriting the application.
 
 The provider explicitly positions its free tier for development/testing, **not production applications**. Use this environment for the client walkthrough and evaluation. It preserves the implemented application's Google authentication, tenant/RBAC checks, CSRF protection, secure cookies and PostgreSQL integrity constraints; a free plan is not a promise of audited security, production SLAs or durable backup coverage. Confirm the Sandbox plan still shows a zero charge in your actual account before creating resources. Do not select Pay-as-you-go, BYOC or paid upgrades.
 
@@ -12,7 +12,7 @@ Alternatives checked: Koyeb requires card verification and its free service slee
 
 ## 1. Account and project
 
-1. Create/sign into [Northflank](https://app.northflank.com/signup) yourself and select the free **Sandbox** plan. Complete any account verification or terms acceptance directly.
+1. Create/sign into [Northflank](https://app.northflank.com/signup) yourself and select the free **Sandbox** plan. Complete any account verification or terms acceptance directly. This account's live UI requires a verification card; the written no-card guide is not accurate for this account.
 2. Create a project named `binderclip` on **Northflank Cloud**, using an available Sandbox region. Do not use BYOC, which bills through your own cloud account.
 3. Connect only `flyingpensil/Binderclip` if GitHub repository authorization is requested. The app repository is public; access to unrelated private repositories is unnecessary.
 

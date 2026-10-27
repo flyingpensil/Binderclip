@@ -1,9 +1,12 @@
 """CI-only smoke check for an isolated container and disposable database."""
 import os
 import re
+import sys
+from pathlib import Path
 import requests
 import django
 
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 os.environ.setdefault('DJANGO_SETTINGS_MODULE', 'binderclip.settings')
 django.setup()
 from django.contrib.auth import get_user_model
