@@ -61,25 +61,25 @@ begin
   if not found then raise exception 'Invoice unavailable';end if;
   perform binderclip.require(p_tenant,case when p_kind='invoice_print' then 'invoicing.detail.print' else 'invoicing.list.manage' end,
    case when p_kind='invoice_print' then 'X' else 'R' end,i.created_by,i.branch);
-  result:=to_jsonb(i)||jsonb_build_object('items',(select coalesce(jsonb_agg(to_jsonb(x)||jsonb_build_object('job_number',j.number)),'[]') from binderclip.invoice_items x join binderclip.jobs j on j.id=x.job_id where x.invoice_id=i.id),
+  result:=to_jsonb(i)||jsonb_build_object('items',(select coalesce(jsonb_agg(to_jsonb(x)||jsonb_build_object('job_number',jr.number)),'[]') from binderclip.invoice_items x join binderclip.jobs jr on jr.id=x.job_id where x.invoice_id=i.id),
    'receipts',(select coalesce(jsonb_agg(to_jsonb(r)),'[]') from binderclip.receipts r where r.invoice_id=i.id));
  elsif p_kind in ('customer_ledger','supplier_ledger') then
   path:=case when p_kind='customer_ledger' then 'customers.ledger.view' else 'suppliers.ledger.view' end;
   if not exists(select 1 from binderclip.masters r where r.id=p_id and r.tenant_id=p_tenant and r.kind=case when p_kind='customer_ledger' then 'customers' else 'suppliers' end
    and binderclip.allowed(p_tenant,path,p_action,r.created_by,r.branch)) then raise exception 'Ledger unavailable' using errcode='42501';end if;
   if p_kind='customer_ledger' then
-   select coalesce(jsonb_agg(to_jsonb(r)||jsonb_build_object('jobs',(select jsonb_agg(distinct j.number) from binderclip.invoice_items x join binderclip.jobs j on j.id=x.job_id where x.invoice_id=r.id))),'[]') into result
+   select coalesce(jsonb_agg(to_jsonb(r)||jsonb_build_object('jobs',(select jsonb_agg(distinct jr.number) from binderclip.invoice_items x join binderclip.jobs jr on jr.id=x.job_id where x.invoice_id=r.id))),'[]') into result
    from binderclip.invoices r where r.tenant_id=p_tenant and r.customer_id=p_id and binderclip.allowed(p_tenant,path,p_action,r.created_by,r.branch)
-   and (p_query='' or r.number ilike '%'||p_query||'%' or exists(select 1 from binderclip.invoice_items x join binderclip.jobs j on j.id=x.job_id where x.invoice_id=r.id and j.number ilike '%'||p_query||'%'));
+   and (p_query='' or r.number ilike '%'||p_query||'%' or exists(select 1 from binderclip.invoice_items x join binderclip.jobs jr on jr.id=x.job_id where x.invoice_id=r.id and jr.number ilike '%'||p_query||'%'));
   else
-   select coalesce(jsonb_agg(to_jsonb(b)||jsonb_build_object('job_number',j.number,'amount',round(b.quantity*b.unit_rate,2))),'[]') into result from binderclip.supplier_bills b join binderclip.jobs j on j.id=b.job_id
+   select coalesce(jsonb_agg(to_jsonb(b)||jsonb_build_object('job_number',jr.number,'amount',round(b.quantity*b.unit_rate,2))),'[]') into result from binderclip.supplier_bills b join binderclip.jobs jr on jr.id=b.job_id
     where b.tenant_id=p_tenant and b.supplier_id=p_id and binderclip.allowed(p_tenant,path,p_action,b.created_by,b.branch)
-    and (p_query='' or b.number ilike '%'||p_query||'%' or j.number ilike '%'||p_query||'%');
+    and (p_query='' or b.number ilike '%'||p_query||'%' or jr.number ilike '%'||p_query||'%');
   end if;
  elsif p_kind='commitments' then
   perform binderclip.require(p_tenant,'suppliers.ledger.view','R',null,m.branch);
-  select coalesce(jsonb_agg(to_jsonb(l)||jsonb_build_object('job_number',j.number,'bill_status',b.status)),'[]') into result
-  from binderclip.cost_lines l join binderclip.jobs j on j.id=l.job_id left join binderclip.supplier_bills b on b.line_id=l.id
+  select coalesce(jsonb_agg(to_jsonb(l)||jsonb_build_object('job_number',jr.number,'bill_status',b.status)),'[]') into result
+  from binderclip.cost_lines l join binderclip.jobs jr on jr.id=l.job_id left join binderclip.supplier_bills b on b.line_id=l.id
   where l.tenant_id=p_tenant and l.supplier_id=p_id and l.side='BUY' and binderclip.allowed(p_tenant,'suppliers.ledger.view','R',l.created_by,l.branch);
  elsif p_kind='journal' then
   select coalesce(jsonb_agg(v),'[]') into result from(select to_jsonb(e)||jsonb_build_object('lines',(select jsonb_agg(to_jsonb(l)) from binderclip.journal_lines l where l.entry_id=e.id)) v

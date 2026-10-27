@@ -74,6 +74,19 @@ class BackendTests(unittest.TestCase):
         self.assertEqual(session['memberships'][0]['display_name'],'Admin1')
         self.assertEqual(len(self.read('members')),1);self.assertEqual(len(self.read('roles')),4)
         self.assertEqual(self.read('jobs'),[])
+        self.assertEqual(self.read('overview')['active_jobs'],'0')
+
+    def test_all_financial_drilldowns(self):
+        job,invoice=self.issued()
+        detail=self.read('job',job)
+        customer=detail['customer_id']
+        supplier=next(line['supplier_id'] for line in detail['lines'] if line['side']=='BUY')
+        self.assertEqual(len(self.read('customer_ledger',customer)),1)
+        self.assertEqual(len(self.read('supplier_ledger',supplier)),1)
+        self.assertEqual(len(self.read('commitments',supplier)),1)
+        self.assertEqual(len(self.read('invoice_print',invoice,'X')['items']),1)
+        self.assertEqual(self.read('overview')['receivables'],'1680.00')
+        self.assertEqual(len(self.read('journal')),3)
     def test_full_accounting_lifecycle(self):
         job,invoice=self.issued()
         self.assertEqual(self.read('invoice',invoice)['total'],'1680.00')
