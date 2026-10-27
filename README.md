@@ -1,12 +1,14 @@
 # Binderclip
 
-A logistics ERP for freight forwarding and 3PL operations. Built with **Django 5.2 LTS, PostgreSQL 17, and responsive HTML/CSS with a small vanilla JavaScript layer**. One application process serves both the UI and business logic; there is no separate frontend build, Redis, or paid identity service requirement.
+A logistics ERP for freight forwarding and 3PL operations. The client workspace uses **GitHub Pages + Supabase Auth/PostgreSQL**, with transactional database commands, company isolation and process-level role permissions. The original Django 5.2 application is retained for separately hosted deployments.
 
 ## Client deployment and Google login
 
-Use the [free Northflank setup](docs/free-hosting.md) to deploy the application and PostgreSQL for client evaluation. Render was rejected because it required paid hosting; no Render services were created. The initial account is **Admin1**, signing in with **inventory.choco@gmail.com**, with full company administrator access. No other users or sample transactions are provisioned on a fresh deployment. Google OAuth credentials must be entered in the host's secret store before sign-in can work.
+Follow [GitHub Pages + Supabase setup](docs/supabase-deployment.md). The initial account is **Admin1**, signing in with **inventory.choco@gmail.com**, with company administrator access. Fresh installation provisions no other members or sample transactions. Google credentials belong only in Supabase's Google provider settings.
 
-**GitHub Pages hosts the client entry page, not Django.** Set its public `BINDERCLIP_APP_URL` repository variable (or `deployment.json`) to the actual HTTPS backend URL after deployment. The application then provides the complete implemented workspace and **Users & access → Add user** for authorized client accounts. Northflank's free Sandbox is an evaluation tier; see the guide for its limits, exact Google callback setup, first sign-in and user assignment.
+The static app is in `web/`; database tables, financial commands, access checks and first administrator bootstrap are in `supabase/migrations/`. Set the public `supabase-config.json` enabled flag after installing and checking the database and Auth configuration. The Pages builder packages only public assets. Never publish database passwords or service-role keys.
+
+Use **Users & access → Add user** to authorize a client's Google email and roles. Clients can open the same website from their own computers. See the deployment guide for financial workflows, test coverage and current implementation limits. Free-tier hosting is suitable for evaluation; configure backups before using real accounting data.
 
 ## Start locally on Windows
 

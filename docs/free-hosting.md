@@ -1,3 +1,11 @@
+# Hosting choice
+
+The chosen deployment is now **GitHub Pages + Supabase Free**, avoiding Render/Northflank card verification. Follow [the current setup guide](supabase-deployment.md).
+
+The instructions below are retained only as a historical alternative for hosting the original Django application. They are not the active deployment plan.
+
+---
+
 # Free client-evaluation deployment: Northflank Sandbox
 
 Render has been rejected for this deployment. No Render resources or paid subscription were created. The preferred free option for Binderclip's existing Django/PostgreSQL stack is **Northflank Sandbox**.

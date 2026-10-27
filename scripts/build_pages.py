@@ -17,6 +17,30 @@ def validate_app_url(value):
 def build(output=None):
     output = Path(output) if output else ROOT / 'pages-dist'
     output.mkdir(parents=True, exist_ok=True)
+    config_file = ROOT / 'supabase-config.json'
+    config = json.loads(config_file.read_text(encoding='utf-8')) if config_file.exists() else {}
+    if config.get('enabled'):
+        origin = validate_app_url(config.get('url', ''))
+        import re
+        if not re.fullmatch(r'https://[a-z0-9]+\.supabase\.co', origin):
+            raise ValueError('Expected a Supabase project HTTPS origin.')
+        key = config.get('publishableKey', '')
+        if not re.fullmatch(r'sb_publishable_[A-Za-z0-9_-]+', key):
+            raise ValueError('Only a public Supabase publishable key may be packaged.')
+        assets = output / 'assets'
+        assets.mkdir(exist_ok=True)
+        for name in ('app.js', 'domain.js', 'fields.js', 'workspace.css'):
+            shutil.copyfile(ROOT / 'web' / name, assets / name)
+        for name in ('app.css', 'favicon.svg'):
+            shutil.copyfile(ROOT / 'static' / name, assets / name)
+        shutil.copytree(ROOT / 'web/vendor', output / 'vendor', dirs_exist_ok=True)
+        csp = f"default-src 'self'; script-src 'self'; style-src 'self'; connect-src 'self' {origin}; img-src 'self' data:; base-uri 'none'; object-src 'none'; frame-src 'none'; form-action 'self'"
+        html = (ROOT / 'web/index.html').read_text(encoding='utf-8').replace('__CSP__', csp)
+        (output / 'index.html').write_text(html, encoding='utf-8')
+        (output / 'config.json').write_text(json.dumps({'url': origin, 'publishableKey': key}), encoding='utf-8')
+        (output / '.nojekyll').touch()
+        print('Binderclip Supabase workspace built with public configuration only.')
+        return
     (output / 'static').mkdir(exist_ok=True)
     shutil.copyfile(ROOT / 'index.html', output / 'index.html')
     for name in ('portal.css', 'portal.js', 'favicon.svg'):

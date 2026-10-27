@@ -107,6 +107,7 @@ begin
 end $$;
 
 create function public.bc_command(p_tenant uuid,p_action text,p_data jsonb default '{}') returns jsonb language plpgsql security definer set search_path='' as $$
+<<cmd>>
 declare m binderclip.members:=binderclip.member(p_tenant);u uuid:=auth.uid();co binderclip.companies;
  r binderclip.masters; j binderclip.jobs;l binderclip.cost_lines;b binderclip.supplier_bills;i binderclip.invoices;
  member_row binderclip.members;role_row binderclip.roles;
@@ -120,7 +121,7 @@ begin
   kind:=p_data->>'kind';if kind not in ('customers','suppliers','rates','tariffs') then raise exception 'Invalid master type';end if;
   path:=case when kind in ('rates','tariffs') then 'masters.rates.manage' else kind||'.list.manage' end;
   if target is not null then
-   select * into r from binderclip.masters where id=target and tenant_id=p_tenant and masters.kind=bc_command.kind for update;
+   select * into r from binderclip.masters where id=target and tenant_id=p_tenant and masters.kind=cmd.kind for update;
    if not found then raise exception 'Record unavailable';end if;
    perform binderclip.require(p_tenant,path,'U',r.created_by,r.branch);
   else perform binderclip.require(p_tenant,path,'C',u,m.branch);end if;
@@ -221,7 +222,7 @@ begin
    net:=round(l.quantity*l.unit_rate,2);tax:=round(net*l.tax_rate/100,2);subtotal:=subtotal+net;tax_total:=tax_total+tax;
    insert into binderclip.invoice_items(tenant_id,invoice_id,job_id,line_id,description,quantity,unit_rate,tax_rate,exemption,net,tax) values(p_tenant,result,l.job_id,l.id,l.service,l.quantity,l.unit_rate,l.tax_rate,l.exemption,net,tax);
   end loop;
-  update binderclip.invoices set subtotal=bc_command.subtotal,tax_total=bc_command.tax_total,total=bc_command.subtotal+bc_command.tax_total where id=result;
+  update binderclip.invoices set subtotal=cmd.subtotal,tax_total=cmd.tax_total,total=cmd.subtotal+cmd.tax_total where id=result;
  elsif p_action in ('invoice.approve','invoice.issue','invoice.receipt') then
   select * into i from binderclip.invoices where id=target and tenant_id=p_tenant for update;
   if not found then raise exception 'Invoice unavailable';end if;

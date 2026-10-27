@@ -1,6 +1,15 @@
 name: Integrity checks
 on: [push, pull_request]
 jobs:
+  browser-domain:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - run: npm test
+      - run: node --check web/app.js
   supabase:
     runs-on: ubuntu-latest
     services:
