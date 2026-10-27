@@ -89,7 +89,7 @@ No changes to the public page are needed just to switch providers: it already ac
 - Verify user creation, job booking, supplier matching and invoice issuance with evaluation data. All 54 domain/security/PostgreSQL tests already passed in GitHub Actions before this hosting change.
 - Export an off-platform database backup before adding important records. Check whether backups are included in the selected free plan rather than assuming coverage.
 
-This image/host adaptation has not yet been deployed or Docker-built locally; Docker is unavailable in the local environment. A container build/boot test is included in CI, and actual Northflank startup, HTTPS and Google login still require your account configuration. Remaining product functionality is tracked in [release-scope.md](release-scope.md).
+The Docker image build, container startup, Admin1 provisioning, versioned static assets and all 54 PostgreSQL tests passed in [GitHub Actions](https://github.com/flyingpensil/Binderclip/actions/runs/40463613836). Docker is unavailable locally; the build was verified in CI. Actual Northflank startup, HTTPS and Google login still require your account configuration. Remaining product functionality is tracked in [release-scope.md](release-scope.md).
 
 ## Official sources
 
