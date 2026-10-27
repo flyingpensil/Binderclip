@@ -1,6 +1,6 @@
 # Client launch: Admin1, Google login and Render
 
-**Superseded hosting choice:** Render has been rejected and no services were created there. Follow [free-hosting.md](free-hosting.md) for the preferred Northflank Sandbox deployment. This file retains the earlier paid Render route for reference only.
+**Superseded hosting choice:** Render has been rejected and no services were created there. Follow [supabase-deployment.md](supabase-deployment.md) for the chosen GitHub Pages + Supabase deployment. This file retains the earlier paid Render route for reference only.
 
 The current GitHub Pages site displays the README. GitHub Pages is static hosting and cannot execute Django or provide the shared ERP database. The repository now includes a public entry page plus a Render Blueprint for the actual application and PostgreSQL.
 

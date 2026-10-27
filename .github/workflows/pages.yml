@@ -1,4 +1,4 @@
-name: Publish client entry page
+name: Publish Binderclip workspace
 on:
   push:
     branches: [main]

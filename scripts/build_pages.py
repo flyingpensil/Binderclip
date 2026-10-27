@@ -14,11 +14,12 @@ def validate_app_url(value):
         raise ValueError('BINDERCLIP_APP_URL must be an HTTPS origin without credentials or a path.')
     return f'{parts.scheme}://{parts.netloc}'
 
-def build(output=None):
+def build(output=None, config=None):
     output = Path(output) if output else ROOT / 'pages-dist'
     output.mkdir(parents=True, exist_ok=True)
     config_file = ROOT / 'supabase-config.json'
-    config = json.loads(config_file.read_text(encoding='utf-8')) if config_file.exists() else {}
+    if config is None:
+        config = json.loads(config_file.read_text(encoding='utf-8')) if config_file.exists() else {}
     if config.get('enabled'):
         origin = validate_app_url(config.get('url', ''))
         import re

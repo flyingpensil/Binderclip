@@ -34,7 +34,7 @@ class DeploymentConfigTests(SimpleTestCase):
 
     def test_pages_package_only_contains_public_assets(self):
         with TemporaryDirectory() as temp, patch.dict('os.environ', {'BINDERCLIP_APP_URL': 'https://client.onrender.com'}), redirect_stdout(StringIO()):
-            build(temp)
+            build(temp, config={'enabled': False})
             names = sorted(str(p.relative_to(temp)).replace('\\', '/') for p in Path(temp).rglob('*') if p.is_file())
             self.assertEqual(names, ['.nojekyll', 'deployment.json', 'index.html', 'static/favicon.svg', 'static/portal.css', 'static/portal.js'])
             self.assertEqual(json.loads((Path(temp) / 'deployment.json').read_text())['appUrl'], 'https://client.onrender.com')

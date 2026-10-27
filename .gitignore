@@ -8,4 +8,5 @@ media/
 .coverage
 .pytest_cache/
 pages-dist/
+pages-preview/
 docs/screenshots/

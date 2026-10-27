@@ -10,6 +10,10 @@ jobs:
           node-version: '22'
       - run: npm test
       - run: node --check web/app.js
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+      - run: python -m unittest web.tests.test_packaging
   supabase:
     runs-on: ubuntu-latest
     services:
