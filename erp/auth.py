@@ -17,7 +17,7 @@ from .models import GoogleIdentity, Membership
 
 def login_page(request):
     if request.user.is_authenticated and request.membership: return redirect('dashboard')
-    return render(request, 'login.html', {'google_enabled': bool(settings.GOOGLE_CLIENT_ID), 'demo_enabled': settings.DEMO_LOGIN})
+    return render(request, 'login.html', {'google_enabled': bool(settings.GOOGLE_CLIENT_ID and settings.GOOGLE_CLIENT_SECRET), 'demo_enabled': settings.DEMO_LOGIN})
 
 def google_start(request):
     if not settings.GOOGLE_CLIENT_ID or not settings.GOOGLE_CLIENT_SECRET:

@@ -7,3 +7,4 @@ staticfiles/
 media/
 .coverage
 .pytest_cache/
+pages-dist/

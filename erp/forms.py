@@ -68,10 +68,10 @@ class ReceiptForm(TenantForm):
         fields = ['reference', 'amount', 'received_on']
 
 class MemberForm(forms.Form):
-    email = forms.EmailField()
-    name = forms.CharField(max_length=150)
+    email = forms.EmailField(label='Google sign-in email', help_text='Use the exact email address the user chooses when signing in with Google.')
+    name = forms.CharField(max_length=150, label='Display name')
     branch = forms.CharField(max_length=80, initial='Dubai')
-    roles = forms.ModelMultipleChoiceField(queryset=Role.objects.none(), widget=forms.CheckboxSelectMultiple)
+    roles = forms.ModelMultipleChoiceField(queryset=Role.objects.none(), widget=forms.CheckboxSelectMultiple, help_text='Assign the permissions they need. Read-only is suitable for a client who should view records without changing them.')
     def __init__(self, *args, member, **kwargs):
         super().__init__(*args, **kwargs)
         self.fields['roles'].queryset = Role.objects.filter(tenant=member.tenant)

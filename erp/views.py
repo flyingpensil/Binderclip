@@ -336,7 +336,7 @@ def member_create(request):
                 member.branch = form.cleaned_data['branch']; member.active = True; member.save()
                 member.roles.set(form.cleaned_data['roles'])
                 services.audit(request.membership, 'membership.assigned', member, email)
-                messages.success(request, 'Google email provisioned. The user can now sign in.'); return redirect('roles')
-    return render(request, 'form.html', {'form': form, 'title': 'Assign a user to this company', 'page': 'roles', 'back': 'roles'})
+                messages.success(request, 'User access saved. Share the workspace URL so they can sign in with their Google account.'); return redirect('roles')
+    return render(request, 'member_form.html', {'form': form, 'page': 'roles', 'app_login_url': request.build_absolute_uri('/login/')})
 
 def health(request): return HttpResponse('ok', content_type='text/plain')

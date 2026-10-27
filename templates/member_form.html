@@ -1,0 +1,20 @@
+{% extends 'base.html' %}
+{% block breadcrumb %}Users & access / Add user{% endblock %}
+{% block content %}
+<div class="page-heading"><div><div class="eyebrow">COMPANY ADMINISTRATION</div><h1>Add user<span class="accent">.</span></h1><p>Give a colleague or client access to your company workspace.</p></div><a href="{% url 'roles' %}" class="button">← Users & access</a></div>
+<div class="bottom-grid">
+  <form method="post" class="panel entry-form">
+    {% csrf_token %}{{ form.non_field_errors }}
+    <div class="form-grid">
+      {% for field in form %}<div class="form-field"><label for="{{ field.id_for_label }}">{{ field.label }}{% if field.field.required %}<span class="required"> *</span>{% endif %}</label>{{ field }}{{ field.errors }}{% if field.help_text %}<small class="muted">{{ field.help_text }}</small>{% endif %}</div>{% endfor %}
+    </div>
+    <div class="form-footer"><span class="muted">No separate password is created.</span><button class="button primary" type="submit">Save user access →</button></div>
+  </form>
+  <section class="workflow-card"><div class="eyebrow">ACCESS FROM ANY COMPUTER</div><h2>Invite. Assign.<br>Sign in.</h2>
+    <div class="workflow-step"><span>01</span><div><strong>Enter their Google email</strong><small>Google verifies the account when they sign in.</small></div></div>
+    <div class="workflow-step"><span>02</span><div><strong>Choose branch and roles</strong><small>Use Read-only for viewing, or select an operational role.</small></div></div>
+    <div class="workflow-step"><span>03</span><div><strong>Share your workspace URL</strong><small>They select Continue with Google on their own computer.</small></div></div>
+    <p style="overflow-wrap:anywhere">{{ app_login_url }}</p><p>Saving access does not send an email. Share this address directly with the user.</p>
+  </section>
+</div>
+{% endblock %}

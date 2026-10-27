@@ -82,7 +82,7 @@ def navigation(request):
                ('Invoices', 'invoices', 'invoicing.list.manage', '▤'),
                ('Rate cards', 'rates', 'masters.rates.manage', '▧'),
                ('General ledger', 'journal', 'reports.journal.view', '≡'),
-               ('Roles & access', 'roles', 'settings.roles.manage', '⚙')]
+               ('Users & access', 'roles', 'settings.roles.manage', '⚙')]
     member = getattr(request, 'membership', None)
     return {'nav_items': [(label, url, icon) for label, url, path, icon in entries if grants(member, path, 'R').exists()],
             'active_company': member.tenant if member else None,

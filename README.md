@@ -1,6 +1,12 @@
 # Binderclip
 
-A working logistics ERP foundation for freight forwarding and 3PL operations. Built in this repository with **Django 5.2 LTS, PostgreSQL 17, and responsive HTML/CSS with a small vanilla JavaScript layer**. One application process serves both the UI and business logic; there is no separate frontend build, Redis, or paid identity service requirement.
+A logistics ERP for freight forwarding and 3PL operations. Built with **Django 5.2 LTS, PostgreSQL 17, and responsive HTML/CSS with a small vanilla JavaScript layer**. One application process serves both the UI and business logic; there is no separate frontend build, Redis, or paid identity service requirement.
+
+## Client deployment and Google login
+
+Use the [client launch guide](docs/client-launch.md) and [Render Blueprint](render.yaml) to deploy the actual application and PostgreSQL. The initial account is **Admin1**, signing in with **inventory.choco@gmail.com**, with full company administrator access. No other users or sample transactions are provisioned on a fresh deployment. Google OAuth credentials must be entered in Render before sign-in can work.
+
+**GitHub Pages hosts the client entry page, not Django.** Set its public `BINDERCLIP_APP_URL` repository variable (or `deployment.json`) to the actual Render URL after deployment. The application then provides the complete implemented workspace and **Users & access → Add user** for authorized client accounts. See the guide for exact Google callback setup, first sign-in and user assignment.
 
 ## Start locally on Windows
 
