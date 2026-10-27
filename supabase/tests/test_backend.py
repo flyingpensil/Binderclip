@@ -53,6 +53,12 @@ class BackendTests(unittest.TestCase):
         return self.conn.execute('select public.bc_command(%s,%s,%s)',(tenant or self.tenant,action,Jsonb(data or {}))).fetchone()[0]
     def read(self,kind,id=None,action='R'):
         return self.conn.execute('select public.bc_read(%s,%s,%s,%s,%s)',(self.tenant,kind,id,'',action)).fetchone()[0]
+    def workflow(self,action,data=None):
+        return self.conn.execute('select public.bc_workflow(%s,%s,%s)',(self.tenant,action,Jsonb(data or {}))).fetchone()[0]
+    def workspace(self,kind,id=None,query='',action='R'):
+        return self.conn.execute('select public.bc_workspace(%s,%s,%s,%s,%s)',(self.tenant,kind,id,query,action)).fetchone()[0]
+    def report(self,kind,action='R'):
+        return self.conn.execute('select public.bc_report(%s,%s,current_date,null,null,%s)',(self.tenant,kind,action)).fetchone()[0]
     def owner(self): self.conn.execute('reset role')
     def client(self): self.conn.execute('set local role authenticated')
     def denied(self,fn):
@@ -200,5 +206,97 @@ class BackendTests(unittest.TestCase):
             e=self.conn.execute("insert into binderclip.journals(tenant_id,source,description,branch,created_by) values(%s,'invalid','invalid','Dubai',%s) returning id",(self.tenant,ADMIN)).fetchone()[0]
             self.conn.execute("insert into binderclip.journal_lines(entry_id,account,debit) values(%s,'1000 Bank',10)",(e,));self.conn.execute('set constraints all immediate')
         self.denied(unbalanced)
+
+    def quote_fixture(self):
+        customer,supplier,_,_=self.fixtures()
+        enquiry=self.workflow('enquiry.save',{'customer_id':customer,'subject':'Ocean import','data':{'pol':'Shanghai','pod':'Jebel Ali','mode':'Ocean'}})['id']
+        quote=self.workflow('quote.save',{'customer_id':customer,'enquiry_id':enquiry,'currency':'AED','fx_rate':'1','valid_until':'2099-01-01','data':{'pol':'Shanghai','pod':'Jebel Ali','mode':'Ocean'}})['id']
+        for side,rate in [('BUY','500'),('SELL','800')]:
+            self.workflow('quote.line',{'id':quote,'side':side,'service':'Freight','supplier_id':supplier if side=='BUY' else None,'quantity':'2','unit_rate':rate,'tax_rate':'5'})
+        return enquiry,quote
+
+    def test_enquiry_quote_to_job_exactly_once_with_cost_copy(self):
+        enquiry,quote=self.quote_fixture()
+        self.workflow('quote.approve',{'id':quote})
+        self.denied(lambda:self.workflow('quote.line',{'id':quote}))
+        job=self.workflow('quote.convert',{'id':quote,'job_number':'FROM-QUOTE'})['id']
+        self.assertEqual(self.read('job',job)['figures']['margin'],'600.00')
+        self.assertEqual(self.workspace('enquiries',enquiry)[0]['status'],'Confirmed')
+        self.assertEqual(self.workspace('quote',quote)['job_id'],job)
+        self.denied(lambda:self.workflow('quote.convert',{'id':quote,'job_number':'DUPLICATE'}))
+        self.assertEqual(self.workspace('quote_print',quote)['lines'][0]['side'],'SELL')
+        self.assertEqual(len(self.workspace('quote_print',quote)['lines']),1)
+
+    def test_quote_expiry_and_conversion_permission(self):
+        _,quote=self.quote_fixture()
+        self.owner();self.conn.execute("update binderclip.quotations set valid_until='2000-01-01' where id=%s",(quote,));self.client()
+        self.denied(lambda:self.workflow('quote.approve',{'id':quote}))
+        self.owner();self.conn.execute("update binderclip.quotations set valid_until='2099-01-01' where id=%s",(quote,));self.client()
+        self.workflow('quote.approve',{'id':quote})
+        self.owner();self.conn.execute("update binderclip.grants set scope='none' where path='jobs.list.manage' and action='C'");self.client()
+        self.denied(lambda:self.workflow('quote.convert',{'id':quote,'job_number':'DENIED'}))
+        self.assertEqual(self.workspace('quote',quote)['status'],'Approved')
+
+    def test_task_gate_blocks_and_then_allows_booking(self):
+        _,_,job,_=self.fixtures()
+        task=self.workflow('task.add',{'job_id':job,'title':'Verify cargo','due_on':'2026-10-27','required_before':'Booked'})['id']
+        self.denied(lambda:self.command('job.book',{'id':job}))
+        self.workflow('task.complete',{'id':task})
+        self.denied(lambda:self.workflow('task.complete',{'id':task}))
+        self.command('job.book',{'id':job})
+        self.assertEqual(self.read('job',job)['status'],'Booked')
+
+    def test_private_documents_require_actual_upload_and_enforce_stage(self):
+        _,_,job,_=self.fixtures()
+        self.workflow('document.require',{'job_id':job,'kind':'BL','required_before':'Booked'})
+        doc=self.workflow('document.register',{'job_id':job,'kind':'BL','filename':'bl.pdf','mime':'application/pdf','bytes':'123'})['id']
+        path=self.workspace('job_workspace',job)['documents'][0]['object_path']
+        self.assertTrue(self.conn.execute("select public.bc_document_access(%s,'C')",(path,)).fetchone()[0])
+        self.assertFalse(self.conn.execute("select public.bc_document_access(%s,'X')",(path,)).fetchone()[0])
+        self.denied(lambda:self.conn.execute('select public.bc_document_finish(%s,%s)',(self.tenant,doc)))
+        self.denied(lambda:self.command('job.book',{'id':job}))
+        self.conn.execute("insert into storage.objects(bucket_id,name,metadata) values('binderclip-documents',%s,%s)",(path,Jsonb({'size':123,'mimetype':'application/pdf'})))
+        self.conn.execute('select public.bc_document_finish(%s,%s)',(self.tenant,doc))
+        self.assertFalse(self.conn.execute("select public.bc_document_access(%s,'C')",(path,)).fetchone()[0])
+        self.assertTrue(self.conn.execute("select public.bc_document_access(%s,'X')",(path,)).fetchone()[0])
+        self.command('job.book',{'id':job})
+        self.owner();self.conn.execute("update binderclip.grants set can_export=false where path='operations.documents.manage'");self.client()
+        self.assertEqual(self.conn.execute('select count(*) from storage.objects').fetchone()[0],0)
+        self.denied(lambda:self.conn.execute("insert into storage.objects(bucket_id,name) values('binderclip-documents','wrong/tenant/path')"))
+
+    def test_invalid_documents_and_cross_company_assignee_denied(self):
+        _,_,job,_=self.fixtures()
+        self.denied(lambda:self.workflow('document.register',{'job_id':job,'kind':'BL','filename':'bad.html','mime':'text/html','bytes':'10'}))
+        self.denied(lambda:self.workflow('document.register',{'job_id':job,'kind':'BL','filename':'huge.pdf','mime':'application/pdf','bytes':'10485761'}))
+        self.denied(lambda:self.workflow('task.add',{'job_id':job,'title':'Bad','due_on':'2026-10-27','assignee_id':str(uuid.uuid4())}))
+
+    def test_supplier_payments_post_and_prevent_overpayment(self):
+        _,supplier,job,buy=self.fixtures();self.command('job.book',{'id':job});bill=self.bill(supplier,job,buy)
+        self.workflow('supplier.pay',{'id':bill,'reference':'SP1','amount':'400','paid_on':'2026-10-27'})
+        self.assertEqual(self.report('payables')['rows'][0]['outstanding'],'600.00')
+        self.denied(lambda:self.workflow('supplier.pay',{'id':bill,'reference':'SP1','amount':'1','paid_on':'2026-10-27'}))
+        self.denied(lambda:self.workflow('supplier.pay',{'id':bill,'reference':'SP2','amount':'601','paid_on':'2026-10-27'}))
+        self.workflow('supplier.pay',{'id':bill,'reference':'SP2','amount':'600','paid_on':'2026-10-27'})
+        self.assertEqual(self.report('payables')['rows'],[])
+        tb=self.report('trial_balance')['rows']
+        from decimal import Decimal
+        self.assertEqual(sum(Decimal(r['debit']) for r in tb),sum(Decimal(r['credit']) for r in tb))
+
+    def test_finance_report_scope_and_universal_search(self):
+        self.issued()
+        self.assertEqual(self.report('receivables')['rows'][0]['outstanding'],'1680.00')
+        self.assertEqual(len(self.workspace('search',query='Customer')['jobs']),1)
+        self.owner();self.conn.execute("update binderclip.grants set scope='none' where path='customers.ledger.view'");self.client()
+        self.assertEqual(self.report('receivables')['rows'],[])
+        self.owner();self.conn.execute("update binderclip.grants set can_export=false where path='reports.finance.view'");self.client()
+        self.denied(lambda:self.report('trial_balance','X'))
+        self.denied(lambda:self.workspace('search',query='a'))
+
+    def test_new_modules_require_explicit_role_grants(self):
+        _,_,job,_=self.fixtures()
+        self.owner();self.conn.execute("update binderclip.grants set scope='none' where path like 'operations.%' or path like 'sales.%'");self.client()
+        self.assertEqual(self.workspace('tasks'),[])
+        self.denied(lambda:self.workflow('event.add',{'job_id':job,'kind':'Note','title':'Forbidden'}))
+        self.denied(lambda:self.workflow('enquiry.save',{}))
 
 if __name__ == '__main__': unittest.main(verbosity=2)
