@@ -36,7 +36,7 @@ def install(apps, schema_editor):
       RETURN NEW;
     END $$;
     CREATE TRIGGER membership_roles_tenant BEFORE INSERT OR UPDATE ON erp_membership_roles FOR EACH ROW EXECUTE FUNCTION binderclip_membership_role_tenant();
-    ''')
+    ''', params=None)
     for model in apps.get_app_config('erp').get_models():
         fields = {f.name for f in model._meta.fields}
         if 'tenant' not in fields: continue
