@@ -309,4 +309,11 @@ class BackendTests(unittest.TestCase):
         self.denied(lambda:self.workflow('event.add',{'job_id':job,'kind':'Note','title':'Forbidden'}))
         self.denied(lambda:self.workflow('enquiry.save',{}))
 
+    def test_restricted_note_content_cannot_leak_through_job_audit(self):
+        _,_,job,_=self.fixtures()
+        self.workflow('event.add',{'job_id':job,'kind':'Note','title':'Confidential handling note','detail':'Restricted details'})
+        self.owner();self.conn.execute("update binderclip.grants set scope='none' where path='operations.timeline.manage'");self.client()
+        self.assertEqual(self.workspace('job_workspace',job)['events'],[])
+        self.assertNotIn('Confidential handling note',json.dumps(self.read('job',job)))
+
 if __name__ == '__main__': unittest.main(verbosity=2)
