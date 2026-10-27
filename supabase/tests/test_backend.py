@@ -87,6 +87,29 @@ class BackendTests(unittest.TestCase):
         self.assertEqual(len(self.read('invoice_print',invoice,'X')['items']),1)
         self.assertEqual(self.read('overview')['receivables'],'1680.00')
         self.assertEqual(len(self.read('journal')),3)
+
+    def test_job_labels_do_not_bypass_customer_directory_scope(self):
+        customer,_,job,_=self.fixtures()
+        self.owner()
+        self.conn.execute("update binderclip.masters set data=data||'{\"credit_limit\":\"9999.99\"}'::jsonb where id=%s",(customer,))
+        self.conn.execute("update binderclip.grants set scope='none' where path='customers.list.manage'")
+        self.client()
+        self.assertEqual(self.read('customers'),[])
+        label=self.read('job',job)['customer']
+        self.assertEqual(label['name'],'Customer')
+        self.assertNotIn('data',label)
+
+    def test_self_scope_commitments_and_branch_job_visibility(self):
+        _,supplier,job,_=self.fixtures()
+        self.owner()
+        self.conn.execute("update binderclip.grants set scope='self' where path='suppliers.ledger.view'")
+        self.conn.execute("update binderclip.grants set scope='branch' where path='jobs.list.manage'")
+        self.client()
+        self.assertEqual(len(self.read('commitments',supplier)),1)
+        self.assertEqual(len(self.read('jobs')),1)
+        self.owner();self.conn.execute("update binderclip.jobs set branch='Other branch' where id=%s",(job,));self.client()
+        self.assertEqual(self.read('jobs'),[])
+        self.denied(lambda:self.read('job',job))
     def test_full_accounting_lifecycle(self):
         job,invoice=self.issued()
         self.assertEqual(self.read('invoice',invoice)['total'],'1680.00')

@@ -42,7 +42,7 @@ begin
   select * into j from binderclip.jobs where id=p_id and tenant_id=p_tenant;
   if not found then raise exception 'Job unavailable';end if;
   perform binderclip.require(p_tenant,'jobs.list.manage','R',j.created_by,j.branch);
-  result:=to_jsonb(j)||jsonb_build_object('customer',(select to_jsonb(c) from binderclip.masters c where c.id=j.customer_id));
+  result:=to_jsonb(j)||jsonb_build_object('customer',(select case when binderclip.allowed(p_tenant,'customers.list.manage','R',c.created_by,c.branch) then to_jsonb(c) else jsonb_build_object('id',c.id,'code',c.code,'name',c.name,'parent_id',c.parent_id) end from binderclip.masters c where c.id=j.customer_id));
   if binderclip.allowed(p_tenant,'costs.detail.manage','R',j.created_by,j.branch) then
    result:=result||jsonb_build_object('figures',binderclip.figures(p_tenant,j.id),'lines',(select coalesce(jsonb_agg(to_jsonb(l)||jsonb_build_object('supplier_name',s.name)),'[]') from binderclip.cost_lines l left join binderclip.masters s on s.id=l.supplier_id where l.job_id=j.id and l.tenant_id=p_tenant),
     'bills',(select coalesce(jsonb_agg(to_jsonb(b)),'[]') from binderclip.supplier_bills b where b.job_id=j.id and b.tenant_id=p_tenant));
@@ -77,7 +77,7 @@ begin
     and (p_query='' or b.number ilike '%'||p_query||'%' or jr.number ilike '%'||p_query||'%');
   end if;
  elsif p_kind='commitments' then
-  perform binderclip.require(p_tenant,'suppliers.ledger.view','R',null,m.branch);
+  perform binderclip.require(p_tenant,'suppliers.ledger.view','R',auth.uid(),m.branch);
   select coalesce(jsonb_agg(to_jsonb(l)||jsonb_build_object('job_number',jr.number,'bill_status',b.status)),'[]') into result
   from binderclip.cost_lines l join binderclip.jobs jr on jr.id=l.job_id left join binderclip.supplier_bills b on b.line_id=l.id
   where l.tenant_id=p_tenant and l.supplier_id=p_id and l.side='BUY' and binderclip.allowed(p_tenant,'suppliers.ledger.view','R',l.created_by,l.branch);
