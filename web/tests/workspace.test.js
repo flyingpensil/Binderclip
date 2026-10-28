@@ -107,6 +107,8 @@ test('authenticated freight workspace renders and submits complete workflows',as
    await route('customers','Customer');await click('[data-do="new-master"][data-kind="customers"]');await wait(()=>w.document.getElementById('editor').open);
    assert.equal(w.document.querySelector('[name=code]').readOnly,true);
    assert.ok(w.document.querySelectorAll('[name=currency] option').length>150);
+   for(const field of ['data.nature_of_business','data.trn','data.crn','data.default_fx_rate'])assert.ok(w.document.querySelector(`[name="${field}"]`));
+   assert.equal(w.document.querySelector('[name="data.shipping_address"]'),null);
    await submit({name:'Japanese customer',currency:'JPY'});
    assert.ok(calls.some(c=>c.args.p_action==='master.save'&&c.args.p_data.currency==='JPY'&&c.args.p_data.code===''));
    await route('jobs','Every shipment');await click('[data-do="new-job"]');await wait(()=>w.document.getElementById('editor').open);

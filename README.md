@@ -10,7 +10,13 @@ The static app is in `web/`; database tables, financial commands, access checks 
 
 Use **Users & access → Add user** to authorize a client's Google email and roles. Clients can open the same website from their own computers. See the deployment guide for financial workflows, test coverage and current implementation limits. Free-tier hosting is suitable for evaluation; configure backups before using real accounting data.
 
-## Start locally on Windows
+## Current Supabase workspace and walkthrough
+
+The client release adds multi-line supplier invoices, multiple suppliers per job, activity/transshipment/container references, a traceable combined cost sheet, editable draft invoice lines/VAT/discounts/adjustments, and customer statements/aging. See [the worked example](docs/practical-workflow.md).
+
+For a local preview of the same frontend, run `scripts/start-supabase.ps1` and open http://127.0.0.1:8002/. Google sign-in continues on the deployed GitHub Pages site, as requested; localhost is not added to the authentication allowlist. This launcher never seeds sample records or starts Django. Financial operations use the configured Supabase project after sign-in on the deployed site.
+
+## Legacy Django preview on Windows
 
 Python 3.13 is required. From PowerShell:
 
