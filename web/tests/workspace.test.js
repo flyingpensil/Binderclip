@@ -163,6 +163,8 @@ test('authenticated freight workspace renders and submits complete workflows',as
    const form=w.document.getElementById('customer-report-form');form.elements.customer_id.value='c1';form.requestSubmit();
    await wait(()=>w.document.querySelector('.report-paper'));assert.match(w.document.querySelector('.report-paper').textContent,/600.00/);
    assert.ok(calls.some(c=>c.args.p_action==='statement'&&c.args.p_data.customer_id==='c1'));
+   w.dispatchEvent(new w.HashChangeEvent('hashchange',{newURL:'https://example.test/Binderclip/#jobs'}));
+   await new Promise(resolve=>setImmediate(resolve));assert.ok(w.document.querySelector('.report-paper'),'A stale navigation event must not erase report selections');
   });
   await t.test('sidebar follows setup, operations, billing and finance order',()=>{
    const routes=[...w.document.querySelectorAll('#nav a')].map(a=>a.hash);

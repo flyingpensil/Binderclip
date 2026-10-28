@@ -131,7 +131,7 @@ $('global-search').addEventListener('submit',event=>{event.preventDefault();cons
 $('nav-search').addEventListener('input',event=>navigation?.search(event.target.value));
 $('company-select').addEventListener('change',event=>{state.member=state.session.memberships.find(m=>m.tenant_id===event.target.value);sessionStorage.setItem('binderclip.company',state.member.tenant_id);state.filters={};shell();render();});
 document.querySelector('.menu-button').addEventListener('click',()=>document.body.classList.toggle('nav-open'));
-window.addEventListener('hashchange',()=>{state.filters=state.nextFilters||{};state.nextFilters=null;render();});
+window.addEventListener('hashchange',event=>{if(event.newURL&&event.newURL!==location.href)return;state.filters=state.nextFilters||{};state.nextFilters=null;render();});
 document.addEventListener('keydown',event=>{if(event.key==='/'&&!['INPUT','TEXTAREA','SELECT'].includes(document.activeElement.tagName)){event.preventDefault();document.querySelector('#global-search input').focus();}});
 async function signout(){try{if(state.client)await state.client.auth.signOut({scope:'local'});}finally{state.session=null;lock('Signed out. Use your approved Google account to return.');}}
 $('signout').addEventListener('click',signout);$('auth-signout').addEventListener('click',signout);$('auth-retry').addEventListener('click',()=>authenticate().catch(error=>lock(error.message)));
