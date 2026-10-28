@@ -154,6 +154,14 @@ class BackendTests(unittest.TestCase):
         self.denied(lambda:self.practical('statement',{'customer_id':customer,'action':'X'}))
         self.assertEqual(self.practical('statement',{'customer_id':customer})['rows'],[])
 
+    def test_invoice_revision_history_does_not_leak_restricted_billing_snapshot(self):
+        job,invoice=self.ready()
+        self.owner();self.conn.execute("update binderclip.invoices set snapshot=jsonb_set(snapshot,'{customer,data,billing_address}','\"Restricted billing address\"') where id=%s",(invoice,));self.client()
+        lines=self.read('invoice',invoice)['items']
+        self.practical('invoice.save',{'id':invoice,'lines':lines,'discount':'10','reason':'Revise draft charges'})
+        self.owner();self.conn.execute("update binderclip.grants set scope='none' where path in('customers.list.manage','invoicing.list.manage')");self.client()
+        self.assertNotIn('Restricted billing address',json.dumps(self.costsheet('detail',{'job_id':job})))
+
     def test_supplier_document_can_be_corrected_before_booking_only(self):
         _,_,job,purchases=self.practical_fixture()
         self.practical('costsheet.import',{'job_id':job,'invoice_ids':purchases})

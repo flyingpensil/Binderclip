@@ -18,6 +18,7 @@ alter table binderclip.purchase_invoices enable row level security;
 alter table binderclip.purchase_items enable row level security;
 revoke all on binderclip.purchase_invoices,binderclip.purchase_items from public,anon,authenticated;
 create index on binderclip.purchase_invoices(tenant_id,job_id);
+create unique index on binderclip.purchase_invoices(tenant_id,supplier_id,lower(reference));
 create trigger record_tracking before insert or update on binderclip.purchase_invoices for each row execute function binderclip.stamp_record();
 create trigger record_tracking before insert or update on binderclip.purchase_items for each row execute function binderclip.stamp_record();
 alter table binderclip.supplier_bills add column purchase_invoice_id uuid;
@@ -178,6 +179,7 @@ begin
   perform binderclip.log(p_tenant,'costsheet.import',j.id,'Supplier documents imported without duplicate lines');result:=jsonb_build_object('id',j.id);
  elsif p_action='costsheet.book_match' then
   select * into strict j from binderclip.jobs where id=job_id and tenant_id=p_tenant for update;
+  if j.locked_at is not null or j.status in('Closed','Cancelled') then raise exception 'This job is locked or archived';end if;
   if j.status='Draft' then perform public.bc_command(p_tenant,'job.book',jsonb_build_object('id',j.id));end if;
   perform binderclip.require(p_tenant,'costs.detail.match','C',j.created_by,j.branch);
   for purchase in select * from binderclip.purchase_invoices h where h.tenant_id=p_tenant and h.job_id=j.id and h.status='Prepared' order by id for update loop
@@ -233,7 +235,9 @@ begin
   select sum(a.net),sum(a.tax) into net,tax from binderclip.invoice_items a where a.invoice_id=inv.id;
   update binderclip.invoices set charges_subtotal=gross,discount=discount_value,adjustment=adjustment_value,subtotal=net,tax_total=tax,total=net+tax,invoice_date=coalesce(nullif(p_data->>'invoice_date','')::date,invoice_date),due_date=coalesce(nullif(p_data->>'due_date','')::date,due_date),supply_date=coalesce(nullif(p_data->>'supply_date','')::date,supply_date,invoice_date),fx_date=coalesce(nullif(p_data->>'fx_date','')::date,fx_date,invoice_date),fx_source=coalesce(p_data->>'fx_source',fx_source) where id=inv.id;
   for job_id in select distinct a.job_id from binderclip.invoice_items a where a.invoice_id=inv.id loop
-   insert into binderclip.costsheet_changes(tenant_id,job_id,action,reason,before_values,after_values,actor) values(p_tenant,job_id,'invoice.draft.save',reason,to_jsonb(inv),(select to_jsonb(a) from binderclip.invoices a where a.id=inv.id),auth.uid());
+   insert into binderclip.costsheet_changes(tenant_id,job_id,action,reason,before_values,after_values,actor) values(p_tenant,job_id,'invoice.draft.save',reason,
+    jsonb_build_object('subtotal',inv.subtotal,'tax_total',inv.tax_total,'total',inv.total,'discount',inv.discount,'adjustment',inv.adjustment),
+    (select jsonb_build_object('subtotal',a.subtotal,'tax_total',a.tax_total,'total',a.total,'discount',a.discount,'adjustment',a.adjustment) from binderclip.invoices a where a.id=inv.id),auth.uid());
   end loop;
   perform set_config('binderclip.draft_invoice','',true);result:=jsonb_build_object('id',inv.id);
  elsif p_action in('statement','customer_aging') then
