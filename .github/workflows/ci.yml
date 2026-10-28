@@ -17,6 +17,8 @@ jobs:
       - run: node --check web/currencies.js
       - run: node --check web/navigation.js
       - run: node --check web/tracking.js
+      - run: node --check web/practical.js
+      - run: node --check web/invoice-math.js
       - uses: actions/setup-python@v5
         with:
           python-version: '3.13'

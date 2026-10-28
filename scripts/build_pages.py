@@ -30,7 +30,7 @@ def build(output=None, config=None):
             raise ValueError('Only a public Supabase publishable key may be packaged.')
         assets = output / 'assets'
         assets.mkdir(exist_ok=True)
-        for name in ('app.js', 'domain.js', 'fields.js', 'freight.js', 'costsheet.js', 'currencies.js', 'billing.js', 'navigation.js', 'tracking.js', 'workspace.css'):
+        for name in ('app.js', 'domain.js', 'fields.js', 'freight.js', 'costsheet.js', 'currencies.js', 'billing.js', 'navigation.js', 'tracking.js', 'practical.js', 'invoice-math.js', 'workspace.css'):
             shutil.copyfile(ROOT / 'web' / name, assets / name)
         for name in ('app.css', 'favicon.svg'):
             shutil.copyfile(ROOT / 'static' / name, assets / name)

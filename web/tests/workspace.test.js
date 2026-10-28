@@ -25,12 +25,13 @@ test('authenticated freight workspace renders and submits complete workflows',as
  const job={id:'j1',number:'J1',customer:{name:'Customer'},data:enquiry.data,status:'Draft',invoices:[],audit:[]};
  const costSheet={...job,status:'Booked',approved:false,locked_at:null,base_currency:'AED',company_name:'Binderclip',has_invoices:false,unbilled_charges:'1',buy_lines:'1',matched_bills:'1',figures:{expected_buy:'1000.00',actual_buy:'1100.00',sell:'1600.00',expected_margin:'600.00',margin:'500.00',margin_percent:'31.25'},lines:lines.map(l=>({...l,currency:'AED',fx_rate:'1',supplier_name:l.side==='BUY'?'Carrier':null,supplier_id:l.side==='BUY'?'s1':null})),line_values:[{id:'buy1',estimated_base:'1000.00',actual_base:'1100.00'},{id:'sell1',estimated_base:'1600.00',actual_base:'1600.00'}],bills:[{id:'b1',line_id:'buy1',number:'BILL-1',quantity:'2',unit_rate:'550',currency:'AED',variance:'100.00',status:'Matched'}]};
  async function fakeRpc(name,args){calls.push({name,args});if(name==='bc_session')return {data:{user_id:'user',memberships:[member],permissions:[]}};
+  if(name==='bc_practical'){const purchase={id:'p1',number:'PINV-000001',reference:'VENDOR-1',job_id:'j1',job_number:'J1',supplier_id:'s1',supplier_name:'Carrier',status:'Draft',match_status:'Draft',currency:'AED',fx_rate:'1',invoice_date:'2026-10-27',due_date:'2026-11-27',net:'1000.00',vat:'50.00',lines:[{id:'pi1',description:'Ocean freight',comments:'Carrier service',unit:'container',quantity:'2',unit_rate:'500',tax_rate:'5'}]};return {data:['purchases','purchase'].includes(args.p_action)?[purchase]:['statement','customer_aging'].includes(args.p_action)?{customer:{name:'Customer'},as_of:'2026-10-28',rows:[],totals:[{currency:'AED',opening:'0.00',debit:'1000.00',credit:'400.00',closing:'600.00'}]}:{id:args.p_action==='invoice.save'?'invoice-created':'p1'}};}
   if(name==='bc_billing')return {data:args.p_kind==='supplier_payments'?[]:args.p_kind==='invoice.create'?{id:'invoice-created'}:[{id:'j1',number:'J1',customer_id:'c1',customer_name:'Customer',status:invoiceReady?'Booked':'Draft',approved:invoiceReady,locked_at:null,buy_count:'1',charge_count:'1',unbilled_count:'1',matched_count:invoiceReady?'1':'0',billing_groups:'1',currency:'AED',fx_rate:'1',credit_days:'30'}]};
   if(name==='bc_costsheet')return {data:args.p_action==='detail'||args.p_action==='print'?costSheet:args.p_action==='list'?[{...costSheet,customer_name:'Customer',sheet_status:'Open'}]:args.p_action==='quotes'?[{id:'q1',name:'QUO-1'}]:{id:'created'}};
   if(['bc_workflow','bc_command'].includes(name))return commandError?{error:{message:commandError}}:{data:{id:args.p_action==='quote.convert'?'j1':'created'}};
   if(name==='bc_document_finish')return {data:{id:args.p_id}};
   if(name==='bc_report')return {data:{currency:'AED',rows:args.p_kind==='trial_balance'?[{account:'1000 Bank',debit:'1000.00',credit:'0.00',balance:'1000.00'},{account:'2100 Payables',debit:'0.00',credit:'1000.00',balance:'-1000.00'}]:[]}};
-  if(name==='bc_read'){const data={overview:{active_jobs:'1',customers:'1',receivables:'0',pending_bills:'0',jobs:[]},customers:noCustomers?[]:[{id:'c1',name:'Customer',code:'C1',currency:'AED',data:{},created_by_name:'Admin1',created_at:'2026-10-27T09:30:00Z',updated_by_name:'Operations editor',updated_at:'2026-10-27T10:45:00Z'}],suppliers:[{id:'s1',name:'Carrier',code:'S1',data:{}}],job,jobs:[],roles:[],members:[],invoices:[],invoice:{id:'invoice-created',number:'INV-000001',status:'Draft',currency:'AED',fx_rate:'1',invoice_date:'2026-10-27',due_date:'2026-11-27',subtotal:'1600.00',tax_total:'80.00',total:'1680.00',paid:'0.00',items:[],receipts:[],snapshot:{company:{name:'Binderclip',address:'',trn:''},customer:{name:'Customer',data:{}}}},journal:[]};return {data:data[args.p_kind]??[]};}
+  if(name==='bc_read'){const data={overview:{active_jobs:'1',customers:'1',receivables:'0',pending_bills:'0',jobs:[]},customers:noCustomers?[]:[{id:'c1',name:'Customer',code:'C1',currency:'AED',data:{},created_by_name:'Admin1',created_at:'2026-10-27T09:30:00Z',updated_by_name:'Operations editor',updated_at:'2026-10-27T10:45:00Z'}],suppliers:[{id:'s1',name:'Carrier',code:'S1',data:{}}],job,jobs:[],roles:[],members:[],invoices:[],invoice:{id:'invoice-created',number:'INV-000001',status:'Draft',currency:'AED',fx_rate:'1',invoice_date:'2026-10-27',due_date:'2026-11-27',subtotal:'1600.00',tax_total:'80.00',total:'1680.00',paid:'0.00',items:[{id:'ii1',job_id:'j1',job_number:'J1',description:'Freight',quantity:'2',unit_rate:'800',tax_rate:'5',net:'1600',tax:'80',unit:'container',comments:''}],receipts:[],snapshot:{company:{name:'Binderclip',address:'',trn:''},customer:{name:'Customer',data:{}}}},journal:[]};return {data:data[args.p_kind]??[]};}
   if(name==='bc_workspace'){const data={enquiries:[enquiry],quotes:[quote],quote,quote_print:{...quote,lines:lines.filter(l=>l.side==='SELL')},tasks:[],assignees:[{id:'m1',name:'Operations'}],payables:[bill],job_workspace:{events:[],tasks:[],documents:[],requirements:[]},search:{jobs:[job],customers:[],suppliers:[],invoices:[],enquiries:[],quotes:[quote]}};return {data:data[args.p_kind]};}
   throw new Error('Unexpected RPC '+name);
  }
@@ -136,6 +137,29 @@ test('authenticated freight workspace renders and submits complete workflows',as
   await t.test('job creation explains missing customer prerequisite without opening a broken form',async()=>{
    noCustomers=true;await route('jobs','Jobs');await click('[data-do="new-job"]');
    assert.equal(w.document.getElementById('editor').open,false);assert.match(w.document.getElementById('notice').textContent,/Create a customer/);noCustomers=false;
+  });
+  await t.test('supplier invoice grid supports multiple lines and posts the complete vendor document',async()=>{
+   await route('purchase-new/j1','Enter supplier invoice');
+   const form=w.document.getElementById('practical-entry-form');form.elements.reference.value='VENDOR-NEW';
+   form.elements.description_0.value='Freight';form.elements.quantity_0.value='2';form.elements.unit_rate_0.value='500';form.elements.tax_rate_0.value='5';
+   await click('[data-do="practical-add-line"]');form.elements.description_1.value='Handling';form.elements.quantity_1.value='1';form.elements.unit_rate_1.value='100';form.elements.tax_rate_1.value='5';
+   form.requestSubmit();await wait(()=>calls.some(c=>c.name==='bc_practical'&&c.args.p_action==='purchase.save'));
+   const saved=calls.findLast(c=>c.args.p_action==='purchase.save');assert.equal(saved.args.p_data.lines.length,2);assert.equal(saved.args.p_data.reference,'VENDOR-NEW');
+   await wait(()=>w.location.hash==='#purchase/p1');await route('purchases/j1','PINV-000001');
+  });
+  await t.test('invoice preparation offers requested columns, live totals and server save',async()=>{
+   await route('invoice-edit/invoice-created','Prepare invoice');
+   const form=w.document.getElementById('practical-entry-form');form.elements.discount.value='100';form.elements.adjustment.value='20';
+   form.elements.discount.dispatchEvent(new w.Event('input',{bubbles:true}));assert.match(form.querySelector('.entry-totals').textContent,/1,596.00/);
+   assert.ok(form.elements.comments_0);assert.ok(form.elements.unit_0);assert.ok(form.elements.tax_rate_0);
+   form.requestSubmit();await wait(()=>calls.some(c=>c.args.p_action==='invoice.save'));
+   const saved=calls.findLast(c=>c.args.p_action==='invoice.save');assert.equal(saved.args.p_data.discount,'100');assert.equal(saved.args.p_data.adjustment,'20');
+  });
+  await t.test('customer report selection requests a scoped statement and shows currency totals',async()=>{
+   await route('customer-reports/statement','Choose a customer');
+   const form=w.document.getElementById('customer-report-form');form.elements.customer_id.value='c1';form.requestSubmit();
+   await wait(()=>w.document.querySelector('.report-paper'));assert.match(w.document.querySelector('.report-paper').textContent,/600.00/);
+   assert.ok(calls.some(c=>c.args.p_action==='statement'&&c.args.p_data.customer_id==='c1'));
   });
   await t.test('sidebar follows setup, operations, billing and finance order',()=>{
    const routes=[...w.document.querySelectorAll('#nav a')].map(a=>a.hash);
