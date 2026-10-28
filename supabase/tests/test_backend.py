@@ -61,6 +61,8 @@ class BackendTests(unittest.TestCase):
         return self.conn.execute('select public.bc_report(%s,%s,current_date,null,null,%s)',(self.tenant,kind,action)).fetchone()[0]
     def costsheet(self,action,data=None):
         return self.conn.execute('select public.bc_costsheet(%s,%s,%s)',(self.tenant,action,Jsonb(data or {}))).fetchone()[0]
+    def practical(self,action,data=None):
+        return self.conn.execute('select public.bc_practical(%s,%s,%s)',(self.tenant,action,Jsonb(data or {}))).fetchone()[0]
     def owner(self): self.conn.execute('reset role')
     def client(self): self.conn.execute('set local role authenticated')
     def denied(self,fn):
@@ -89,6 +91,68 @@ class BackendTests(unittest.TestCase):
         self.assertEqual(len(self.read('members')),1);self.assertEqual(len(self.read('roles')),4)
         self.assertEqual(self.read('jobs'),[])
         self.assertEqual(self.read('overview')['active_jobs'],'0')
+
+    def practical_fixture(self):
+        customer=self.command('master.save',{'kind':'customers','name':'Practical customer','currency':'AED','data':{'default_fx_rate':'1','nature_of_business':'Manufacturing','trn':'100000000000001','crn':'CRN-001'}})['id']
+        suppliers=[self.command('master.save',{'kind':'suppliers','name':name,'currency':'AED'})['id'] for name in ['Ocean carrier','Customs broker']]
+        job=self.command('job.save',{'customer_id':customer,'data':{'pol':'Shanghai','transshipment_port':'Singapore','pod':'Jebel Ali','activity_code':'SEA-I','supplier_ids':suppliers,'client_reference':'PO-100','container_numbers':'MSCU1234567'}})['id']
+        purchases=[]
+        for idx,supplier in enumerate(suppliers):
+            purchases.append(self.practical('purchase.save',{'job_id':job,'supplier_id':supplier,'reference':'VENDOR-'+str(idx),'invoice_date':'2026-10-27','due_date':'2026-11-27','currency':'AED','fx_rate':'1','lines':[{'description':['Ocean freight','Clearance'][idx],'comments':'Source service','unit':'container' if idx==0 else 'shipment','quantity':'2' if idx==0 else '1','unit_rate':'500' if idx==0 else '200','tax_rate':'5'}]})['id'])
+        return customer,suppliers,job,purchases
+
+    def test_practical_multi_supplier_to_statement_and_aging(self):
+        customer,suppliers,job,purchases=self.practical_fixture()
+        self.assertEqual(len(self.practical('purchases',{'job_id':job})),2)
+        self.practical('costsheet.import',{'job_id':job,'invoice_ids':purchases})
+        self.denied(lambda:self.practical('costsheet.import',{'job_id':job,'invoice_ids':purchases}))
+        self.assertEqual(len(self.read('job',job)['lines']),4)
+        self.practical('costsheet.book_match',{'job_id':job})
+        self.assertTrue(all(p['match_status']=='Matched' for p in self.practical('purchases',{'job_id':job})))
+        self.command('cost.approve',{'id':job});invoice=self.command('invoice.generate',{'job_ids':[job]})['id']
+        before=self.read('invoice',invoice)
+        lines=[{'id':x['id'],'description':x['description'],'comments':'Client agreed','unit':'shipment','quantity':x['quantity'],'unit_rate':'600' if x['quantity']=='2.000' else '300','tax_rate':'5'} for x in before['items']]
+        self.practical('invoice.save',{'id':invoice,'lines':lines,'discount':'100','adjustment':'20','reason':'Agreed billing'})
+        inv=self.read('invoice',invoice);self.assertEqual(inv['subtotal'],'1420.00');self.assertEqual(inv['tax_total'],'71.00');self.assertEqual(inv['total'],'1491.00')
+        self.assertEqual(self.costsheet('detail',{'job_id':job})['figures']['margin'],'220.00')
+        self.command('invoice.approve',{'id':invoice});self.command('invoice.issue',{'id':invoice})
+        self.command('invoice.receipt',{'id':invoice,'reference':'PRACTICAL-BANK','amount':'491','received_on':'2026-10-28'})
+        statement=self.practical('statement',{'customer_id':customer})
+        self.assertEqual(statement['totals'][0]['closing'],'1000.00');self.assertEqual(statement['totals'][0]['debit'],'1491.00');self.assertEqual(statement['totals'][0]['credit'],'491.00')
+        self.assertEqual(self.practical('customer_aging',{'customer_id':customer})['rows'][0]['outstanding'],'1000.00')
+        self.denied(lambda:self.practical('invoice.save',{'id':invoice,'lines':lines,'reason':'Forbidden rewrite'}))
+        from decimal import Decimal
+        tb=self.report('trial_balance')['rows'];self.assertEqual(sum(Decimal(x['debit']) for x in tb),sum(Decimal(x['credit']) for x in tb))
+        self.assertEqual(next(x['balance'] for x in tb if x['account']=='1200 VAT recoverable'),'60.00')
+        self.assertEqual(sum(Decimal(b['total']) for b in self.workspace('payables')),Decimal('1260.00'))
+
+    def test_practical_document_duplicate_and_scope_checks(self):
+        customer,suppliers,job,purchases=self.practical_fixture()
+        self.denied(lambda:self.practical('costsheet.import',{'job_id':job,'invoice_ids':[purchases[0],purchases[0]]}))
+        other=self.command('job.save',{'customer_id':customer,'data':{'pol':'Dubai','pod':'Tokyo'}})['id']
+        self.denied(lambda:self.practical('costsheet.import',{'job_id':other,'invoice_ids':purchases}))
+        self.denied(lambda:self.command('job.save',{'customer_id':customer,'data':{'pol':'Dubai','pod':'Tokyo','supplier_ids':[str(uuid.uuid4())]}}))
+        self.denied(lambda:self.command('master.save',{'kind':'customers','name':'Invalid FX','currency':'AED','data':{'default_fx_rate':'2'}}))
+        self.owner();self.conn.execute("update binderclip.grants set scope='none' where path='costs.detail.manage'");self.client()
+        self.assertEqual(self.practical('purchases',{'job_id':job}),[])
+        self.denied(lambda:self.practical('costsheet.import',{'job_id':job,'invoice_ids':purchases}))
+
+    def test_draft_invoice_mixed_vat_allocation_and_additional_line(self):
+        job,invoice=self.ready();original=self.read('invoice',invoice)
+        lines=[{**x,'description':x['description'],'unit':'container','comments':'Freight'} for x in original['items']]
+        lines.append({'job_id':job,'description':'Exempt service','unit':'shipment','quantity':'1','unit_rate':'100','tax_rate':'0','exemption':'Exempt service documentation'})
+        self.practical('invoice.save',{'id':invoice,'lines':lines,'discount':'170','adjustment':'0','reason':'Prepare draft'})
+        inv=self.read('invoice',invoice);self.assertEqual(inv['subtotal'],'1530.00');self.assertEqual(inv['tax_total'],'72.00');self.assertEqual(inv['total'],'1602.00')
+        self.assertEqual(len(inv['items']),2)
+        self.denied(lambda:self.practical('invoice.save',{'id':invoice,'lines':lines,'discount':'1800','reason':'Invalid discount'}))
+        self.owner();self.denied(lambda:self.conn.execute('update binderclip.invoice_items set unit_rate=1 where invoice_id=%s',(invoice,)));self.client()
+
+    def test_statement_requires_customer_and_export_permission(self):
+        customer,_,_,_=self.practical_fixture()
+        self.denied(lambda:self.practical('statement'))
+        self.owner();self.conn.execute("update binderclip.grants set can_export=false where path='customers.ledger.view'");self.client()
+        self.denied(lambda:self.practical('statement',{'customer_id':customer,'action':'X'}))
+        self.assertEqual(self.practical('statement',{'customer_id':customer})['rows'],[])
 
     def test_record_tracking_is_server_assigned_and_preserves_creator(self):
         customer=self.command('master.save',{'kind':'customers','name':'Tracked','created_by':str(uuid.uuid4()),'created_at':'1990-01-01','currency':'AED'})['id']
