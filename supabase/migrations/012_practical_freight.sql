@@ -72,6 +72,13 @@ create trigger immutable_invoice_items before update or delete on binderclip.inv
 create function binderclip.invoice_issue_stamp() returns trigger language plpgsql set search_path='' as $$
 begin if old.status='Approved' and new.status in('Issued','Paid') then new.issued_at:=clock_timestamp();else new.issued_at:=old.issued_at;end if;return new;end $$;
 create trigger issue_stamp before update on binderclip.invoices for each row execute function binderclip.invoice_issue_stamp();
+create function binderclip.copy_invoice_source() returns trigger language plpgsql security definer set search_path='' as $$
+begin
+ select comments,unit into new.comments,new.unit from binderclip.cost_lines where id=new.line_id;
+ select coalesce(max(position),0)+1 into new.position from binderclip.invoice_items where invoice_id=new.invoice_id;
+ return new;
+end $$;
+create trigger copy_source before insert on binderclip.invoice_items for each row execute function binderclip.copy_invoice_source();
 alter table binderclip.journal_lines drop constraint journal_lines_account_check;
 alter table binderclip.journal_lines add constraint journal_lines_account_check check(account in('1000 Bank','1100 Receivables','1200 VAT recoverable','2000 Accrued costs','2100 Payables','2200 VAT payable','4000 Freight revenue','5000 Direct costs'));
 create function binderclip.post_supplier_vat() returns trigger language plpgsql security definer set search_path='' as $$
@@ -95,15 +102,15 @@ begin
  select * into strict co from binderclip.companies where id=p_tenant;
  if p_action in('purchases','purchase') then
   if job_id is not null then select * into strict j from binderclip.jobs where id=job_id and tenant_id=p_tenant;perform binderclip.require(p_tenant,'jobs.list.manage','R',j.created_by,j.branch);end if;
-  select coalesce(jsonb_agg(v order by v->>'created_at' desc),'[]') into result from(
-   select to_jsonb(h)||jsonb_build_object('supplier_name',s.name,'job_number',j.number,
+  select coalesce(jsonb_agg(q.payload order by q.payload->>'created_at' desc),'[]') into result from(
+   select to_jsonb(h)||jsonb_build_object('supplier_name',vendor.name,'job_number',shipment.number,
     'lines',(select coalesce(jsonb_agg(to_jsonb(a) order by position),'[]') from binderclip.purchase_items a where a.invoice_id=h.id),
     'net',(select coalesce(sum(round(a.quantity*a.unit_rate,2)),0) from binderclip.purchase_items a where a.invoice_id=h.id),
     'vat',(select coalesce(sum(round(round(a.quantity*a.unit_rate,2)*a.tax_rate/100,2)),0) from binderclip.purchase_items a where a.invoice_id=h.id),
-    'match_status',case when h.status='Draft' then 'Draft' when not exists(select 1 from binderclip.purchase_items a left join binderclip.supplier_bills b on b.line_id=a.buy_line_id where a.invoice_id=h.id and (b.id is null or b.status<>'Matched')) then 'Matched' when exists(select 1 from binderclip.supplier_bills b where b.purchase_invoice_id=h.id and b.status='Pending') then 'Variance review' else 'Prepared' end) v
-   from binderclip.purchase_invoices h join binderclip.masters s on s.id=h.supplier_id join binderclip.jobs j on j.id=h.job_id
+    'match_status',case when h.status='Draft' then 'Draft' when not exists(select 1 from binderclip.purchase_items a left join binderclip.supplier_bills b on b.line_id=a.buy_line_id where a.invoice_id=h.id and (b.id is null or b.status<>'Matched')) then 'Matched' when exists(select 1 from binderclip.supplier_bills b where b.purchase_invoice_id=h.id and b.status='Pending') then 'Variance review' else 'Prepared' end) payload
+   from binderclip.purchase_invoices h join binderclip.masters vendor on vendor.id=h.supplier_id join binderclip.jobs shipment on shipment.id=h.job_id
    where h.tenant_id=p_tenant and (target is null or h.id=target) and (job_id is null or h.job_id=job_id)
-   and binderclip.allowed(p_tenant,'costs.detail.manage','R',j.created_by,j.branch) and binderclip.allowed(p_tenant,'jobs.list.manage','R',j.created_by,j.branch)
+   and binderclip.allowed(p_tenant,'costs.detail.manage','R',shipment.created_by,shipment.branch) and binderclip.allowed(p_tenant,'jobs.list.manage','R',shipment.created_by,shipment.branch)
    order by h.created_at desc limit 500)q;
  elsif p_action='purchase.save' then
   j:=binderclip.job_guard(p_tenant,job_id,'costs.detail.manage','C');
@@ -166,6 +173,7 @@ begin
   if inv.status<>'Draft' then raise exception 'Only an unapproved draft invoice can be edited';end if;
   if jsonb_typeof(p_data->'lines')<>'array' or jsonb_array_length(p_data->'lines') not between 1 and 100 then raise exception 'Enter 1 to 100 invoice lines';end if;
   reason:=trim(p_data->>'reason');if coalesce(reason,'')='' then raise exception 'Record a reason for draft invoice preparation';end if;
+  if coalesce(nullif(p_data->>'invoice_date','')::date,inv.invoice_date)>current_date or coalesce(nullif(p_data->>'due_date','')::date,inv.due_date)<coalesce(nullif(p_data->>'invoice_date','')::date,inv.invoice_date) then raise exception 'Check invoice and due dates';end if;
   for j in select distinct r.* from binderclip.jobs r join binderclip.invoice_items a on a.job_id=r.id where a.invoice_id=inv.id order by r.id loop
    perform binderclip.require(p_tenant,'invoicing.detail.generate','C',j.created_by,j.branch);perform binderclip.require(p_tenant,'costs.detail.manage','U',j.created_by,j.branch);
    if j.locked_at is not null or j.status in('Closed','Cancelled') then raise exception 'This job is locked or archived';end if;
@@ -203,7 +211,7 @@ begin
    update binderclip.invoice_items set net=(v->>'net')::numeric,tax=round((v->>'net')::numeric*x.tax_rate/100,2),discount_share=allocated_discount,adjustment_share=allocated_adjustment where id=x.id;
   end loop;
   select sum(a.net),sum(a.tax) into net,tax from binderclip.invoice_items a where a.invoice_id=inv.id;
-  update binderclip.invoices set charges_subtotal=gross,discount=discount_value,adjustment=adjustment_value,subtotal=net,tax_total=tax,total=net+tax where id=inv.id;
+  update binderclip.invoices set charges_subtotal=gross,discount=discount_value,adjustment=adjustment_value,subtotal=net,tax_total=tax,total=net+tax,invoice_date=coalesce(nullif(p_data->>'invoice_date','')::date,invoice_date),due_date=coalesce(nullif(p_data->>'due_date','')::date,due_date) where id=inv.id;
   for job_id in select distinct a.job_id from binderclip.invoice_items a where a.invoice_id=inv.id loop
    insert into binderclip.costsheet_changes(tenant_id,job_id,action,reason,before_values,after_values,actor) values(p_tenant,job_id,'invoice.draft.save',reason,to_jsonb(inv),(select to_jsonb(a) from binderclip.invoices a where a.id=inv.id),auth.uid());
   end loop;
@@ -216,19 +224,19 @@ begin
   if p_action='statement' and customer_id is null then raise exception 'Choose a customer for the statement of account';end if;
   if customer_id is not null then select * into strict c from binderclip.masters where id=customer_id and tenant_id=p_tenant and kind='customers';perform binderclip.require(p_tenant,'customers.ledger.view',requested_action,c.created_by,c.branch);end if;
   with visible as(
-   select i.*,c.name customer_name from binderclip.invoices i join binderclip.masters c on c.id=i.customer_id
+   select i.*,customer_alias.name customer_name from binderclip.invoices i join binderclip.masters customer_alias on customer_alias.id=i.customer_id
    where i.tenant_id=p_tenant and i.status in('Issued','Partially Paid','Paid') and (customer_id is null or i.customer_id=customer_id) and (requested_currency is null or i.currency=requested_currency)
-   and coalesce(timezone('Asia/Dubai',i.issued_at)::date,(select timezone('Asia/Dubai',j.created_at)::date from binderclip.journals j where j.tenant_id=p_tenant and j.source='invoice:'||i.id),i.invoice_date)<=to_on
-   and binderclip.allowed(p_tenant,'customers.ledger.view',requested_action,c.created_by,c.branch) and binderclip.allowed(p_tenant,'customers.ledger.view',requested_action,i.created_by,i.branch)
+   and coalesce(timezone('Asia/Dubai',i.issued_at)::date,(select timezone('Asia/Dubai',entry.created_at)::date from binderclip.journals entry where entry.tenant_id=p_tenant and entry.source='invoice:'||i.id),i.invoice_date)<=to_on
+   and binderclip.allowed(p_tenant,'customers.ledger.view',requested_action,customer_alias.created_by,customer_alias.branch) and binderclip.allowed(p_tenant,'customers.ledger.view',requested_action,i.created_by,i.branch)
   ), events as(
-   select i.id,i.customer_id,i.customer_name,i.currency,i.number reference,'Invoice' kind,i.invoice_date document_date,coalesce(timezone('Asia/Dubai',i.issued_at)::date,(select timezone('Asia/Dubai',j.created_at)::date from binderclip.journals j where j.tenant_id=p_tenant and j.source='invoice:'||i.id),i.invoice_date) posted_on,i.total debit,0::numeric credit,i.due_date from visible i
+   select i.id,i.customer_id,i.customer_name,i.currency,i.number reference,'Invoice' kind,i.invoice_date document_date,coalesce(timezone('Asia/Dubai',i.issued_at)::date,(select timezone('Asia/Dubai',entry.created_at)::date from binderclip.journals entry where entry.tenant_id=p_tenant and entry.source='invoice:'||i.id),i.invoice_date) posted_on,i.total debit,0::numeric credit,i.due_date from visible i
    union all
-   select r.id,i.customer_id,i.customer_name,i.currency,r.reference,'Receipt',r.received_on,timezone('Asia/Dubai',j.created_at)::date,0,r.amount,i.due_date from visible i join binderclip.receipts r on r.invoice_id=i.id join binderclip.journals j on j.tenant_id=p_tenant and j.source='receipt:'||r.id where timezone('Asia/Dubai',j.created_at)::date<=to_on and r.received_on<=to_on
+   select r.id,i.customer_id,i.customer_name,i.currency,r.reference,'Receipt',r.received_on,timezone('Asia/Dubai',entry.created_at)::date,0,r.amount,i.due_date from visible i join binderclip.receipts r on r.invoice_id=i.id join binderclip.journals entry on entry.tenant_id=p_tenant and entry.source='receipt:'||r.id where timezone('Asia/Dubai',entry.created_at)::date<=to_on and r.received_on<=to_on
   ), statement_rows as(
    select *,sum(debit-credit) over(partition by currency order by posted_on,kind,id rows unbounded preceding) balance from events
   ), aging as(
    select i.id,i.customer_id,i.customer_name,i.number,i.currency,i.invoice_date,i.due_date,greatest(0,to_on-i.due_date) days_overdue,
-    i.total-coalesce((select sum(r.amount) from binderclip.receipts r join binderclip.journals j on j.tenant_id=p_tenant and j.source='receipt:'||r.id where r.invoice_id=i.id and timezone('Asia/Dubai',j.created_at)::date<=to_on and r.received_on<=to_on),0) outstanding from visible i
+    i.total-coalesce((select sum(r.amount) from binderclip.receipts r join binderclip.journals entry on entry.tenant_id=p_tenant and entry.source='receipt:'||r.id where r.invoice_id=i.id and timezone('Asia/Dubai',entry.created_at)::date<=to_on and r.received_on<=to_on),0) outstanding from visible i
   )
   select jsonb_build_object('customer',case when c.id is null then null else jsonb_build_object('id',c.id,'name',c.name,'code',c.code) end,'as_of',to_on,'from',from_on,'rows',
    case when p_action='statement' then (select coalesce(jsonb_agg(to_jsonb(a) order by posted_on,kind,id),'[]') from statement_rows a where from_on is null or a.posted_on>=from_on)
@@ -237,7 +245,7 @@ begin
  else raise exception 'Unknown practical workflow action';end if;
  return binderclip.decimals(binderclip.with_tracking(p_tenant,result));
 end $$;
-revoke all on function binderclip.purchase_number(),binderclip.validate_practical_fields(),binderclip.protect_invoice_item(),binderclip.invoice_issue_stamp(),binderclip.post_supplier_vat(),public.bc_practical(uuid,text,jsonb) from public,anon,authenticated;
+revoke all on function binderclip.purchase_number(),binderclip.validate_practical_fields(),binderclip.protect_invoice_item(),binderclip.invoice_issue_stamp(),binderclip.copy_invoice_source(),binderclip.post_supplier_vat(),public.bc_practical(uuid,text,jsonb) from public,anon,authenticated;
 grant execute on function public.bc_practical(uuid,text,jsonb) to authenticated;
 -- Use invoice net charges for billed revenue so discounts and adjustments appear in job margin.
 do $$declare definition text;begin
