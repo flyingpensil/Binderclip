@@ -60,6 +60,12 @@ declare base_currency text;value text;begin
 end $$;
 create trigger practical_fields before insert or update on binderclip.masters for each row execute function binderclip.validate_practical_fields();
 create trigger practical_fields before insert or update on binderclip.jobs for each row execute function binderclip.validate_practical_fields();
+create function binderclip.purchase_stage_gate() returns trigger language plpgsql security definer set search_path='' as $$
+begin
+ if new.status='Booked' and old.status='Draft' and exists(select 1 from binderclip.purchase_invoices where job_id=new.id and status='Draft') then raise exception 'Import every draft supplier invoice into the cost sheet before booking this job';end if;
+ return new;
+end $$;
+create trigger purchase_stage_gate before update of status on binderclip.jobs for each row execute function binderclip.purchase_stage_gate();
 
 -- Posted invoice lines remain immutable. The controlled draft editor is the only
 -- application path that can change an unposted line.
@@ -259,7 +265,7 @@ begin
  else raise exception 'Unknown practical workflow action';end if;
  return binderclip.decimals(binderclip.with_tracking(p_tenant,result));
 end $$;
-revoke all on function binderclip.purchase_number(),binderclip.validate_practical_fields(),binderclip.protect_invoice_item(),binderclip.invoice_issue_stamp(),binderclip.invoice_defaults(),binderclip.copy_invoice_source(),binderclip.post_supplier_vat(),public.bc_practical(uuid,text,jsonb) from public,anon,authenticated;
+revoke all on function binderclip.purchase_number(),binderclip.validate_practical_fields(),binderclip.purchase_stage_gate(),binderclip.protect_invoice_item(),binderclip.invoice_issue_stamp(),binderclip.invoice_defaults(),binderclip.copy_invoice_source(),binderclip.post_supplier_vat(),public.bc_practical(uuid,text,jsonb) from public,anon,authenticated;
 grant execute on function public.bc_practical(uuid,text,jsonb) to authenticated;
 -- Use invoice net charges for billed revenue so discounts and adjustments appear in job margin.
 do $$declare definition text;begin

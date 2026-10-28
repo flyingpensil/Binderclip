@@ -164,6 +164,29 @@ class BackendTests(unittest.TestCase):
         self.practical('costsheet.book_match',{'job_id':job})
         self.denied(lambda:self.practical('purchase.unprepare',{'id':purchases[0],'reason':'Cannot rewrite booked costs'}))
 
+    def test_unselected_supplier_documents_block_booking_and_vat_settlement_is_complete(self):
+        _,_,job,purchases=self.practical_fixture()
+        self.practical('costsheet.import',{'job_id':job,'invoice_ids':[purchases[0]]})
+        self.denied(lambda:self.practical('costsheet.book_match',{'job_id':job}))
+        self.assertEqual(self.read('job',job)['status'],'Draft');self.assertEqual(self.read('journal'),[])
+        self.practical('costsheet.import',{'job_id':job,'invoice_ids':[purchases[1]]});self.practical('costsheet.book_match',{'job_id':job})
+        bill=self.workspace('payables')[0]
+        self.workflow('supplier.pay',{'id':bill['id'],'reference':'COMPLETE-VAT-PAYMENT','amount':bill['total'],'paid_on':'2026-10-28'})
+        self.assertEqual(next(b['paid'] for b in self.workspace('payables') if b['id']==bill['id']),bill['total'])
+        self.denied(lambda:self.workflow('supplier.pay',{'id':bill['id'],'reference':'EXCESS','amount':'0.01','paid_on':'2026-10-28'}))
+
+    def test_customer_reports_keep_currencies_separate(self):
+        job,invoice=self.issued();customer=self.read('invoice',invoice)['customer_id']
+        supplier=self.read('suppliers')[0]['id']
+        foreign=self.command('job.save',{'customer_id':customer,'data':{'pol':'Shanghai','pod':'Dubai'}})['id']
+        buy=self.command('cost.add',{'job_id':foreign,'side':'BUY','service':'Freight','supplier_id':supplier,'quantity':'1','unit_rate':'10','currency':'AED','fx_rate':'1'})['id']
+        self.command('cost.add',{'job_id':foreign,'side':'SELL','service':'Freight','quantity':'1','unit_rate':'10','currency':'USD','fx_rate':'3.6725','tax_rate':'5'})
+        self.command('job.book',{'id':foreign});self.bill(supplier,foreign,buy,'1','10');self.command('cost.approve',{'id':foreign})
+        foreign_invoice=self.command('invoice.generate',{'job_ids':[foreign]})['id'];self.command('invoice.approve',{'id':foreign_invoice});self.command('invoice.issue',{'id':foreign_invoice})
+        totals={r['currency']:r['closing'] for r in self.practical('statement',{'customer_id':customer})['totals']}
+        self.assertEqual(totals,{'AED':'1680.00','USD':'10.50'})
+        self.assertEqual(len(self.practical('customer_aging',{'customer_id':customer,'currency':'USD'})['rows']),1)
+
     def test_statement_opening_and_historical_aging_exclude_later_receipts(self):
         from datetime import timedelta
         job,invoice=self.issued();customer=self.read('invoice',invoice)['customer_id']

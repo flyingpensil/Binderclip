@@ -39,7 +39,7 @@ test('authenticated freight workspace renders and submits complete workflows',as
  globalThis.fetch=async()=>({ok:true,json:async()=>({url:'https://example.supabase.co',publishableKey:'sb_publishable_test',features:{freight:true,costSheets:true}})});
  const wait=async predicate=>{const deadline=Date.now()+2000;while(!predicate()){if(Date.now()>deadline)throw new Error('DOM condition timed out: '+w.document.body.textContent.slice(-800));await new Promise(resolve=>setImmediate(resolve));}};
  const click=async selector=>{const el=w.document.querySelector(selector);assert.ok(el,'Missing '+selector);el.click();await new Promise(resolve=>setImmediate(resolve));};
- const route=async(hash,text)=>{w.location.hash=hash;const page=hash.split('/')[0],label={invoices:'Customer invoices',customers:'Customers',jobs:'Jobs'}[page]||page;await wait(()=>w.document.getElementById('screen').textContent.includes(text)&&w.document.getElementById('breadcrumb').textContent===label);};
+ const route=async(hash,text)=>{w.location.hash=hash;const page=hash.split('/')[0],label={'purchases':'Supplier invoices','purchase':'Supplier invoice','purchase-new':'New supplier invoice','purchase-edit':'Edit supplier invoice','invoice-edit':'Prepare invoice','job-invoices':'Job invoices','customer-reports':'Customer account reports',invoices:'Customer invoices',customers:'Customers',jobs:'Jobs'}[page]||page;await wait(()=>w.document.getElementById('screen').textContent.includes(text)&&w.document.getElementById('breadcrumb').textContent===label);};
  const submit=async values=>{const form=w.document.getElementById('editor-form');for(const [name,value]of Object.entries(values))form.elements.namedItem(name).value=value;form.noValidate=!!form.querySelector('[name=upload]');form.requestSubmit();await wait(()=>!w.document.getElementById('editor').open||!w.document.getElementById('form-error').hidden);};
  try{
   await import('../app.js?dom-workflow-test');await wait(()=>!w.document.getElementById('workspace').hidden);
@@ -110,7 +110,7 @@ test('authenticated freight workspace renders and submits complete workflows',as
    await submit({name:'Japanese customer',currency:'JPY'});
    assert.ok(calls.some(c=>c.args.p_action==='master.save'&&c.args.p_data.currency==='JPY'&&c.args.p_data.code===''));
    await route('jobs','Every shipment');await click('[data-do="new-job"]');await wait(()=>w.document.getElementById('editor').open);
-   assert.equal(w.document.querySelector('[name=number]').readOnly,true);assert.equal(w.document.querySelector('[name="data.supplier_job_number"]'),null);
+   assert.equal(w.document.querySelector('[name=number]').readOnly,true);assert.equal(w.document.querySelector('[name="data.supplier_job_number"]'),null);assert.equal(w.document.querySelector('[name="data.delivery_order"]'),null);assert.ok(w.document.querySelector('[name="data.activity_code"]'));assert.ok(w.document.querySelector('[name="data.transshipment_port"]'));assert.ok(w.document.querySelector('[name="data.container_numbers"]'));assert.ok(w.document.querySelector('[name="data.supplier_ids"]'));
    await submit({customer_id:'c1','data.pol':'Tokyo','data.pod':'Dubai','data.shipper_address':'Tokyo warehouse','data.consignee_address':'Dubai warehouse'});
    assert.ok(calls.some(c=>c.args.p_action==='job.save'&&c.args.p_data.data.shipper_address==='Tokyo warehouse'&&c.args.p_data.data.consignee_address==='Dubai warehouse'));
   });
