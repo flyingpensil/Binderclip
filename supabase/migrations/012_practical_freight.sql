@@ -27,7 +27,10 @@ alter table binderclip.cost_lines add column comments text not null default '',a
 alter table binderclip.invoice_items add column comments text not null default '',add column unit text not null default 'shipment',add column position integer not null default 0,
  add column discount_share numeric(18,2) not null default 0,add column adjustment_share numeric(18,2) not null default 0;
 alter table binderclip.invoices add column discount numeric(18,2) not null default 0 check(discount>=0),add column adjustment numeric(18,2) not null default 0,
- add column charges_subtotal numeric(18,2),add column issued_at timestamptz;
+ add column charges_subtotal numeric(18,2),add column issued_at timestamptz,add column fx_source text not null default '',add column fx_date date,add column supply_date date;
+create function binderclip.invoice_defaults() returns trigger language plpgsql set search_path='' as $$
+begin new.fx_source:=coalesce(new.snapshot->'customer'->'data'->>'default_fx_source','');new.fx_date:=new.invoice_date;new.supply_date:=new.invoice_date;return new;end $$;
+create trigger invoice_defaults before insert on binderclip.invoices for each row execute function binderclip.invoice_defaults();
 
 -- Extend the existing sequence without changing any existing identifiers.
 do $$declare definition text;begin
@@ -222,7 +225,7 @@ begin
    update binderclip.invoice_items set net=(v->>'net')::numeric,tax=round((v->>'net')::numeric*x.tax_rate/100,2),discount_share=allocated_discount,adjustment_share=allocated_adjustment where id=x.id;
   end loop;
   select sum(a.net),sum(a.tax) into net,tax from binderclip.invoice_items a where a.invoice_id=inv.id;
-  update binderclip.invoices set charges_subtotal=gross,discount=discount_value,adjustment=adjustment_value,subtotal=net,tax_total=tax,total=net+tax,invoice_date=coalesce(nullif(p_data->>'invoice_date','')::date,invoice_date),due_date=coalesce(nullif(p_data->>'due_date','')::date,due_date) where id=inv.id;
+  update binderclip.invoices set charges_subtotal=gross,discount=discount_value,adjustment=adjustment_value,subtotal=net,tax_total=tax,total=net+tax,invoice_date=coalesce(nullif(p_data->>'invoice_date','')::date,invoice_date),due_date=coalesce(nullif(p_data->>'due_date','')::date,due_date),supply_date=coalesce(nullif(p_data->>'supply_date','')::date,supply_date,invoice_date),fx_date=coalesce(nullif(p_data->>'fx_date','')::date,fx_date,invoice_date),fx_source=coalesce(p_data->>'fx_source',fx_source) where id=inv.id;
   for job_id in select distinct a.job_id from binderclip.invoice_items a where a.invoice_id=inv.id loop
    insert into binderclip.costsheet_changes(tenant_id,job_id,action,reason,before_values,after_values,actor) values(p_tenant,job_id,'invoice.draft.save',reason,to_jsonb(inv),(select to_jsonb(a) from binderclip.invoices a where a.id=inv.id),auth.uid());
   end loop;
@@ -246,17 +249,17 @@ begin
   ), statement_rows as(
    select *,sum(debit-credit) over(partition by currency order by posted_on,kind,id rows unbounded preceding) balance from events
   ), aging as(
-   select i.id,i.customer_id,i.customer_name,i.number,i.currency,i.invoice_date,i.due_date,greatest(0,to_on-i.due_date) days_overdue,
+   select i.id,i.customer_id,i.customer_name,i.customer_name party,i.number,i.currency,i.invoice_date,i.due_date,greatest(0,to_on-i.due_date) days_overdue,
     i.total-coalesce((select sum(r.amount) from binderclip.receipts r join binderclip.journals entry on entry.tenant_id=p_tenant and entry.source='receipt:'||r.id where r.invoice_id=i.id and timezone('Asia/Dubai',entry.created_at)::date<=to_on and r.received_on<=to_on),0) outstanding from visible i
   )
-  select jsonb_build_object('customer',case when c.id is null then null else jsonb_build_object('id',c.id,'name',c.name,'code',c.code) end,'as_of',to_on,'from',from_on,'rows',
+  select jsonb_build_object('currency',co.currency,'customer',case when c.id is null then null else jsonb_build_object('id',c.id,'name',c.name,'code',c.code) end,'as_of',to_on,'from',from_on,'rows',
    case when p_action='statement' then (select coalesce(jsonb_agg(to_jsonb(a) order by posted_on,kind,id),'[]') from statement_rows a where from_on is null or a.posted_on>=from_on)
    else(select coalesce(jsonb_agg(to_jsonb(a) order by customer_name,currency,due_date,id),'[]') from aging a where outstanding>0) end,
    'totals',(select coalesce(jsonb_agg(to_jsonb(a) order by currency),'[]') from(select currency,coalesce(sum(debit-credit) filter(where from_on is not null and posted_on<from_on),0) opening,sum(debit-credit) closing,coalesce(sum(debit) filter(where from_on is null or posted_on>=from_on),0) debit,coalesce(sum(credit) filter(where from_on is null or posted_on>=from_on),0) credit from events group by currency)a)) into result;
  else raise exception 'Unknown practical workflow action';end if;
  return binderclip.decimals(binderclip.with_tracking(p_tenant,result));
 end $$;
-revoke all on function binderclip.purchase_number(),binderclip.validate_practical_fields(),binderclip.protect_invoice_item(),binderclip.invoice_issue_stamp(),binderclip.copy_invoice_source(),binderclip.post_supplier_vat(),public.bc_practical(uuid,text,jsonb) from public,anon,authenticated;
+revoke all on function binderclip.purchase_number(),binderclip.validate_practical_fields(),binderclip.protect_invoice_item(),binderclip.invoice_issue_stamp(),binderclip.invoice_defaults(),binderclip.copy_invoice_source(),binderclip.post_supplier_vat(),public.bc_practical(uuid,text,jsonb) from public,anon,authenticated;
 grant execute on function public.bc_practical(uuid,text,jsonb) to authenticated;
 -- Use invoice net charges for billed revenue so discounts and adjustments appear in job margin.
 do $$declare definition text;begin
@@ -273,5 +276,28 @@ do $$declare definition text;signature text;begin
  definition:=pg_get_functiondef('public.bc_workflow(uuid,text,jsonb)'::regprocedure);
  definition:=replace(definition,'net:=round(bill_row.quantity*bill_row.unit_rate,2);','net:=round(bill_row.quantity*bill_row.unit_rate,2)+bill_row.tax_amount;');
  definition:=replace(definition,'binderclip.base(bill_row.quantity,bill_row.unit_rate,bill_row.fx_rate)','(binderclip.base(bill_row.quantity,bill_row.unit_rate,bill_row.fx_rate)+round(bill_row.tax_amount*bill_row.fx_rate,2))');execute definition;
+end $$;
+-- Allocate base revenue cumulatively: line sums match the invoice's rounded net
+-- posting even when an invoice contains several jobs or fractional FX values.
+create or replace function binderclip.figures(t uuid,j uuid) returns jsonb language sql stable security definer set search_path='' as $$
+ with billed as(
+  select x.line_id,round(sum(x.net) over(partition by x.invoice_id order by x.position,x.id rows unbounded preceding)*i.fx_rate,2)-round((sum(x.net) over(partition by x.invoice_id order by x.position,x.id rows unbounded preceding)-x.net)*i.fx_rate,2) base_net
+  from binderclip.invoice_items x join binderclip.invoices i on i.id=x.invoice_id where x.tenant_id=t
+ ),totals as(
+  select coalesce(sum(binderclip.base(l.quantity,l.unit_rate,l.fx_rate)) filter(where side='BUY'),0) expected_buy,
+   coalesce(sum(case when b.status='Matched' then binderclip.base(b.quantity,b.unit_rate,b.fx_rate) else binderclip.base(l.quantity,l.unit_rate,l.fx_rate) end) filter(where side='BUY'),0) actual_buy,
+   coalesce(sum(coalesce(x.base_net,binderclip.base(l.quantity,l.unit_rate,l.fx_rate))) filter(where side='SELL'),0) sell,
+   coalesce(sum(binderclip.base(l.quantity,l.unit_rate,l.fx_rate)) filter(where side='SELL'),0) expected_sell
+  from binderclip.cost_lines l left join binderclip.supplier_bills b on b.line_id=l.id left join billed x on x.line_id=l.id where l.tenant_id=t and l.job_id=j)
+ select to_jsonb(totals)||jsonb_build_object('margin',sell-actual_buy,'expected_margin',expected_sell-expected_buy,'margin_percent',case when sell=0 then 0 else round((sell-actual_buy)/sell*100,2) end) from totals;
+$$;
+-- The original Receivables report now uses the same posted-date ageing engine.
+do $$declare definition text;begin
+ definition:=pg_get_functiondef('public.bc_report(uuid,text,date,date,date,text)'::regprocedure);
+ definition:=replace(definition,'if p_action not in(''R'',''X'')','if p_kind=''receivables'' then return public.bc_practical(p_tenant,''customer_aging'',jsonb_build_object(''as_of'',p_as_of,''action'',p_action));end if; if p_action not in(''R'',''X'')');execute definition;
+end $$;
+do $$declare definition text;begin
+ definition:=pg_get_functiondef('public.bc_command(uuid,text,jsonb)'::regprocedure);
+ definition:=replace(definition,'amount:=(p_data->>''amount'')::numeric;if amount<=0','if (p_data->>''received_on'')::date>current_date then raise exception ''Receipt date cannot be in the future'';end if; amount:=(p_data->>''amount'')::numeric;if amount<=0');execute definition;
 end $$;
 commit;
