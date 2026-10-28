@@ -135,6 +135,17 @@ begin
    values(p_tenant,target,idx,trim(v->>'description'),coalesce(v->>'comments',''),coalesce(nullif(v->>'unit',''),'shipment'),(v->>'quantity')::numeric,(v->>'unit_rate')::numeric,coalesce((v->>'tax_rate')::numeric,0));
   end loop;
   perform binderclip.log(p_tenant,'purchase.save',target,p_data->>'reference');result:=jsonb_build_object('id',target);
+ elsif p_action='purchase.unprepare' then
+  select * into strict purchase from binderclip.purchase_invoices where id=target and tenant_id=p_tenant for update;
+  j:=binderclip.job_guard(p_tenant,purchase.job_id,'costs.detail.manage','U');
+  if j.status<>'Draft' or j.approved or purchase.status<>'Prepared' or coalesce(trim(p_data->>'reason'),'')='' then raise exception 'A reason and an unbooked, unapproved job are required';end if;
+  select array_agg(a) into ids from(select buy_line_id a from binderclip.purchase_items where invoice_id=target union all select sell_line_id from binderclip.purchase_items where invoice_id=target)q;
+  if exists(select 1 from binderclip.cost_lines where id=any(ids) and accrued) or exists(select 1 from binderclip.invoice_items where line_id=any(ids)) then raise exception 'Posted or invoiced source lines cannot be removed';end if;
+  insert into binderclip.costsheet_changes(tenant_id,job_id,action,reason,before_values,after_values,actor) values(p_tenant,j.id,'purchase.unprepare',trim(p_data->>'reason'),(select jsonb_agg(to_jsonb(a)) from binderclip.cost_lines a where a.id=any(ids)),jsonb_build_object('purchase_id',purchase.id),auth.uid());
+  update binderclip.purchase_items set buy_line_id=null,sell_line_id=null where invoice_id=target;
+  delete from binderclip.cost_lines where id=any(ids);
+  update binderclip.purchase_invoices set status='Draft' where id=target;update binderclip.jobs set approved=false where id=j.id;
+  result:=jsonb_build_object('id',target);
  elsif p_action='costsheet.import' then
   j:=binderclip.job_guard(p_tenant,job_id,'costs.detail.manage','C');
   if j.status<>'Draft' or j.approved then raise exception 'Import supplier documents into an open draft job';end if;
@@ -220,7 +231,7 @@ begin
   if requested_action not in('R','X') or as_of>current_date then raise exception 'Choose a valid report date/action';end if;
   to_on:=least(coalesce(nullif(p_data->>'to','')::date,as_of),as_of);
   if from_on>to_on then raise exception 'From date cannot follow the report end date';end if;
-  perform binderclip.require(p_tenant,'reports.finance.view',requested_action);
+  perform binderclip.require(p_tenant,'reports.finance.view',requested_action,auth.uid(),member_row.branch);
   if p_action='statement' and customer_id is null then raise exception 'Choose a customer for the statement of account';end if;
   if customer_id is not null then select * into strict c from binderclip.masters where id=customer_id and tenant_id=p_tenant and kind='customers';perform binderclip.require(p_tenant,'customers.ledger.view',requested_action,c.created_by,c.branch);end if;
   with visible as(

@@ -1,6 +1,6 @@
 export const escapeHTML = value => String(value ?? '').replace(/[&<>"']/g, character => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[character]));
 export function scaled(value, places=2) {
-  const text=String(value ?? '0');
+  const text=String(value ?? '0').trim().replace(/^(-?)\./,(_,sign)=>sign+'0.');
   if(!/^-?\d+(\.\d+)?$/.test(text)) throw new Error('Invalid decimal');
   const negative=text.startsWith('-'), [whole,fraction='']=(negative?text.slice(1):text).split('.');
   const digits=(fraction+'0'.repeat(places)).slice(0,places);

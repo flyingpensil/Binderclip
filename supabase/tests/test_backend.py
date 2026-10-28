@@ -154,6 +154,36 @@ class BackendTests(unittest.TestCase):
         self.denied(lambda:self.practical('statement',{'customer_id':customer,'action':'X'}))
         self.assertEqual(self.practical('statement',{'customer_id':customer})['rows'],[])
 
+    def test_supplier_document_can_be_corrected_before_booking_only(self):
+        _,_,job,purchases=self.practical_fixture()
+        self.practical('costsheet.import',{'job_id':job,'invoice_ids':purchases})
+        self.practical('purchase.unprepare',{'id':purchases[0],'reason':'Correct vendor amount'})
+        self.assertEqual(len(self.read('job',job)['lines']),2)
+        self.practical('costsheet.import',{'job_id':job,'invoice_ids':[purchases[0]]})
+        self.assertEqual(len(self.read('job',job)['lines']),4)
+        self.practical('costsheet.book_match',{'job_id':job})
+        self.denied(lambda:self.practical('purchase.unprepare',{'id':purchases[0],'reason':'Cannot rewrite booked costs'}))
+
+    def test_statement_opening_and_historical_aging_exclude_later_receipts(self):
+        from datetime import timedelta
+        job,invoice=self.issued();customer=self.read('invoice',invoice)['customer_id']
+        today=self.conn.execute('select current_date').fetchone()[0]
+        self.command('invoice.receipt',{'id':invoice,'reference':'AGED-RECEIPT','amount':'500','received_on':str(today-timedelta(days=2))})
+        # Trusted CI fixture simulates records posted before this release. Never run
+        # these fixture-only trigger settings against a client database.
+        self.owner();self.conn.execute("set local session_replication_role='replica'")
+        self.conn.execute('update binderclip.invoices set issued_at=now()-interval \'40 days\',invoice_date=current_date-45,due_date=current_date-10 where id=%s',(invoice,))
+        self.conn.execute("update binderclip.journals set created_at=now()-interval '40 days' where source=%s",('invoice:'+invoice,))
+        self.conn.execute("update binderclip.journals set created_at=now()-interval '2 days' where source like 'receipt:%'")
+        self.conn.execute("set local session_replication_role='origin'");self.client()
+        previous=self.practical('customer_aging',{'customer_id':customer,'as_of':str(today-timedelta(days=5))})
+        self.assertEqual(previous['rows'][0]['outstanding'],'1680.00')
+        current=self.practical('customer_aging',{'customer_id':customer})
+        self.assertEqual(current['rows'][0]['outstanding'],'1180.00');self.assertEqual(current['rows'][0]['days_overdue'],'10')
+        statement=self.practical('statement',{'customer_id':customer,'from':str(today-timedelta(days=5))})
+        self.assertEqual(statement['totals'][0]['opening'],'1680.00');self.assertEqual(statement['totals'][0]['closing'],'1180.00')
+        self.assertEqual(len(statement['rows']),1);self.assertEqual(statement['rows'][0]['balance'],'1180.00')
+
     def test_record_tracking_is_server_assigned_and_preserves_creator(self):
         customer=self.command('master.save',{'kind':'customers','name':'Tracked','created_by':str(uuid.uuid4()),'created_at':'1990-01-01','currency':'AED'})['id']
         before=self.read('customers',customer)[0]
