@@ -48,7 +48,7 @@ export function createDocumentHandler({env=name=>globalThis.Deno?.env.get(name),
   const creds=connection?.credentials;if(!creds?.refresh_token)throw new Fault(503,'The attachment service needs the owner to reconnect.');
   if(Date.parse(creds.expires_at)>now()+60000)return creds.access_token;
   const r=await request('https://oauth2.googleapis.com/token',{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},body:new URLSearchParams({grant_type:'refresh_token',refresh_token:creds.refresh_token,client_id:required('GOOGLE_DRIVE_CLIENT_ID'),client_secret:required('GOOGLE_DRIVE_CLIENT_SECRET')})});
-  if(!r.ok){await service('connection.error');throw new Fault(503,'The attachment service needs the owner to reconnect.');}
+  if(!r.ok){let reason='';try{reason=(await r.json()).error;}catch{}if(['invalid_client','invalid_grant','unauthorized_client'].includes(reason)){await service('connection.error');throw new Fault(503,'The attachment service needs the owner to reconnect.');}throw new Fault(r.status===429?429:503,'The attachment service is temporarily unavailable. Retry shortly.');}
   const data=await r.json();if(!data.access_token||!Number.isFinite(Number(data.expires_in)))throw new Fault(503,'The attachment service needs owner attention.');
   await service('connection.token',{credentials:{access_token:data.access_token,expires_at:new Date(now()+Number(data.expires_in)*1000).toISOString(),...(data.refresh_token?{refresh_token:data.refresh_token}:{})}});return data.access_token;
  }
@@ -76,7 +76,7 @@ export function createDocumentHandler({env=name=>globalThis.Deno?.env.get(name),
   const ownerEmail=required('GOOGLE_DRIVE_OWNER_EMAIL').toLowerCase();required('GOOGLE_DRIVE_CLIENT_SECRET');const clientId=required('GOOGLE_DRIVE_CLIENT_ID');
   const cookiePath='/functions/v1/binderclip-documents/owner',cookie=(state,age=600)=>`bc_drive_setup=${state}; Path=${cookiePath}; Secure; HttpOnly; SameSite=Lax; Max-Age=${age}`;
   if(url.pathname.endsWith('/owner/connect')){
-   const current=await service('connection.get');if(current.root_id&&env('GOOGLE_DRIVE_SETUP_ENABLED')!=='true')throw new Fault(403,'Owner setup is closed. Re-enable it in the backend for an authorized reconnection.');
+   const current=await service('connection.get');if(current.root_id&&current.status==='Ready'&&current.credentials?.refresh_token&&env('GOOGLE_DRIVE_SETUP_ENABLED')!=='true')throw new Fault(403,'Owner setup is closed. Re-enable it in the backend for an authorized reconnection.');
    const state=base64url(crypto.getRandomValues(new Uint8Array(32))),verifier=base64url(crypto.getRandomValues(new Uint8Array(32)));
    await service('state.create',{state_hash:await sha256(new TextEncoder().encode(state)),verifier});
    const target=new URL('https://accounts.google.com/o/oauth2/v2/auth');target.search=new URLSearchParams({client_id:clientId,redirect_uri:callbackURL(),response_type:'code',scope:SCOPES,access_type:'offline',prompt:'consent',state,code_challenge:base64url(new Uint8Array(await crypto.subtle.digest('SHA-256',new TextEncoder().encode(verifier)))),code_challenge_method:'S256'});

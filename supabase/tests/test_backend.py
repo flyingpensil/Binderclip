@@ -737,6 +737,16 @@ class BackendTests(unittest.TestCase):
         self.denied(lambda:self.attachments('quote',quote))
         self.denied(lambda:self.conn.execute("select public.bc_document_context(%s,%s,'X')",(self.tenant,doc)))
 
+    def test_drive_access_token_refresh_preserves_offline_credentials(self):
+        self.document_service('connection.save',{'owner_email':'owner@example.test','owner_sub':'owner','client_id':'client','root_id':'root-private-123','credentials':{'refresh_token':'private-refresh-original','access_token':'private-access-original','expires_at':'2026-10-29T10:00:00Z'}})
+        for token in ['private-access-second','private-access-third']:
+            self.document_service('connection.token',{'credentials':{'access_token':token,'expires_at':'2026-10-29T12:00:00Z'}})
+            credentials=self.document_service('connection.get')['credentials']
+            self.assertEqual(credentials['refresh_token'],'private-refresh-original')
+            self.assertEqual(credentials['access_token'],token)
+        self.document_service('connection.token',{'credentials':{'refresh_token':'private-refresh-rotated','access_token':'private-access-fourth'}})
+        self.assertEqual(self.document_service('connection.get')['credentials']['refresh_token'],'private-refresh-rotated')
+
     def test_related_attachments_do_not_leak_into_job_or_satisfy_stage_gates(self):
         _,suppliers,job,purchases=self.practical_fixture()
         metadata={'kind':'BL','filename':'vendor-bl.pdf','mime':'application/pdf','bytes':'123'}
