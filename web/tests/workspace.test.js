@@ -101,6 +101,11 @@ test('authenticated freight workspace renders and submits complete workflows',as
   await t.test('invoice legal identity comes from its company snapshot and product branding is secondary',async()=>{
    await route('invoice/invoice-created','Client Legal Entity LLC');assert.equal(w.document.querySelector('.invoice-company-name').textContent,'Client Legal Entity LLC');assert.equal(w.document.querySelector('.invoice-paper .brand'),null);assert.match(w.document.querySelector('.invoice-paper').textContent,/Prepared with Binderclip/);
   });
+  await t.test('draft invoices can explicitly refresh company details with a recorded reason',async()=>{
+   await route('invoice/invoice-created','Client Legal Entity LLC');await click('[data-do=practical-refresh-company]');
+   await wait(()=>w.document.getElementById('editor').open);await submit({reason:'Client confirmed company setup'});
+   assert.ok(calls.some(c=>c.args.p_action==='invoice.refresh_company'&&c.args.p_data.id==='invoice-created'&&c.args.p_data.reason==='Client confirmed company setup'));
+  });
   await t.test('cost sheet separates actual supplier costs, revenue and profit',async()=>{
    await route('costsheets','Job financials');await route('costsheet/j1','Supplier costs — what we pay');
    const text=w.document.getElementById('screen').textContent;assert.match(text,/1,100.00/);assert.match(text,/1,600.00/);assert.match(text,/500.00/);assert.match(text,/31.25%/);

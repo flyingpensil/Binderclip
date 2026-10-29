@@ -61,10 +61,10 @@ Run `npm test` for browser decimal/export/config checks. The Supabase CI job app
 
 ## Current upgrades and commercial launch
 
-Install migrations 010–025 in numerical order after the earlier migrations. Never rerun the initial schema against an existing project. Test migrations first against a disposable database. Migrations 017–021 strengthen decimal validation, Dubai date cutoffs and invoice adjustment allocation without rewriting existing business rows or granting browser access to private tables.
+Install migrations 010–026 in numerical order after the earlier migrations. Never rerun the initial schema against an existing project. Test migrations first against a disposable database. Migrations 017–021 strengthen decimal validation, Dubai date cutoffs and invoice adjustment allocation without rewriting existing business rows or granting browser access to private tables.
 
 The read-only [integrity audit](../supabase/audits/integrity.sql) reconciles 25 structural/accounting controls. It is not a substitute for checking external source invoices, bank statements, VAT eligibility or backup restoration.
 
 GitHub Pages is the existing evaluation deployment. Before selling subscriptions, move the frontend to a host suitable for commercial SaaS; see the [production roadmap](production-roadmap.md). No paid plan, Drive connector, billing provider or domain purchase is activated by these upgrades.
 
-Migrations 022–025 add [company operating settings](company-settings.md). Existing companies remain unconfirmed for country/VAT status. No registration status, tax percentages on existing documents or posted journals are inferred or changed by installation.
+Migrations 022–026 add [company operating settings](company-settings.md). Existing companies remain unconfirmed for country/VAT status. No registration status, tax percentages on existing documents or posted journals are inferred or changed by installation.
