@@ -4,6 +4,7 @@
   "publishableKey": "sb_publishable_likxDNgG68IuZw2WMCCTXw_bbf-jmAn",
   "features": {
     "freight": true,
-    "costSheets": true
+    "costSheets": true,
+    "documentService": true
   }
 }
