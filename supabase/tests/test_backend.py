@@ -80,6 +80,55 @@ class BackendTests(unittest.TestCase):
         self.assertEqual(self.workspace('search',query='*')['suppliers'][0]['name'],'Carrier')
         self.assertEqual(len(self.costsheet('list',{'q':'Sh?ng*'})),1)
 
+    def test_financial_precision_is_checked_before_storing_or_posting(self):
+        _,supplier,job,buy=self.fixtures()
+        for quantity,rate in [('1.0001','10'),('1','10.001'),('NaN','10')]:
+            self.denied(lambda:self.command('cost.add',{'job_id':job,'side':'SELL','service':'Invalid precision','quantity':quantity,'unit_rate':rate,'currency':'AED','tax_rate':'5'}))
+        self.command('job.book',{'id':job})
+        self.denied(lambda:self.bill(supplier,job,buy,rate='500.001'))
+        self.bill(supplier,job,buy);self.command('cost.approve',{'id':job})
+        invoice=self.command('invoice.generate',{'job_ids':[job]})['id']
+        self.command('invoice.approve',{'id':invoice});self.command('invoice.issue',{'id':invoice})
+        self.denied(lambda:self.command('invoice.receipt',{'id':invoice,'reference':'FRACTION','amount':'1.001','received_on':'2026-10-29'}))
+        self.assertEqual(self.read('invoice',invoice)['paid'],'0.00')
+
+    def test_receipt_and_direct_supplier_match_validate_dates_and_references(self):
+        _,supplier,job,buy=self.fixtures();self.command('job.book',{'id':job})
+        data={'job_id':job,'line_id':buy,'supplier_id':supplier,'number':'','invoice_date':'2026-10-27','due_date':'2026-11-27','quantity':'2','unit_rate':'500','currency':'AED','fx_rate':'1'}
+        self.denied(lambda:self.command('bill.match',data))
+        self.denied(lambda:self.command('bill.match',{**data,'number':'BAD-DATE','due_date':'2026-10-26'}))
+        self.bill(supplier,job,buy);self.command('cost.approve',{'id':job})
+        invoice=self.command('invoice.generate',{'job_ids':[job]})['id'];self.command('invoice.approve',{'id':invoice});self.command('invoice.issue',{'id':invoice})
+        self.denied(lambda:self.command('invoice.receipt',{'id':invoice,'reference':'','amount':'1','received_on':'2026-10-29'}))
+        self.denied(lambda:self.command('invoice.receipt',{'id':invoice,'reference':'BEFORE','amount':'1','received_on':'2020-01-01'}))
+
+    def test_report_cutoffs_use_posting_dates_and_reject_ignored_ranges(self):
+        _,supplier,job,buy=self.fixtures();self.command('job.book',{'id':job});bill=self.bill(supplier,job,buy)
+        self.workflow('supplier.pay',{'id':bill,'reference':'LATE-POST','amount':'100','paid_on':'2026-10-27'})
+        self.owner();today=self.conn.execute('select binderclip.today()').fetchone()[0]
+        self.conn.execute("set local session_replication_role='replica'")
+        self.conn.execute("update binderclip.journals set created_at=(%s::date-1)::timestamp at time zone 'UTC' + interval '22 hours' where source=%s",(today,'bill:'+bill))
+        self.conn.execute("set local session_replication_role='origin'");self.client()
+        from datetime import timedelta
+        previous=today-timedelta(days=1)
+        self.assertEqual(self.conn.execute("select public.bc_report(%s,'payables',%s)",(self.tenant,previous)).fetchone()[0]['rows'],[])
+        self.assertEqual(self.report('payables')['rows'][0]['outstanding'],'900.00')
+        self.denied(lambda:self.conn.execute("select public.bc_report(%s,'receivables',%s,%s,%s)",(self.tenant,today,previous,today)))
+        self.denied(lambda:self.conn.execute("select public.bc_report(%s,'job_profitability',%s)",(self.tenant,previous)))
+        # The 22:00 UTC posting belongs to the next Dubai date.
+        prior=self.conn.execute("select public.bc_report(%s,'trial_balance',%s)",(self.tenant,previous)).fetchone()[0]
+        self.assertFalse(any(row['account']=='2100 Payables' for row in prior['rows']))
+
+    def test_read_only_integrity_audit_accepts_a_complete_posted_flow(self):
+        self.issued()
+        self.owner()
+        source=(ROOT/'supabase/audits/integrity.sql').read_text(encoding='utf-8')
+        query=source[source.index('with checks'):source.rindex('commit;')]
+        rows=self.conn.execute(query).fetchall()
+        self.assertEqual(len(rows),22)
+        self.assertEqual([(name,count) for name,count in rows if count],[])
+        self.client()
+
     def fixtures(self):
         customer=self.command('master.save',{'kind':'customers','code':'C1','name':'Customer','currency':'AED','data':{'credit_days':'30'}})['id']
         supplier=self.command('master.save',{'kind':'suppliers','code':'S1','name':'Carrier','currency':'AED','data':{}})['id']
