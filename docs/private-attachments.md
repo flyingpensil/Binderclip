@@ -4,6 +4,8 @@ Status (2026-10-29): migration 027, the Edge Function and the matching frontend 
 
 The designated storage owner is now an approved Google tester. The OAuth project remains External/Testing. Publishing is disabled until branding configuration is complete (home page/privacy policy are currently blank). Testing-mode Drive refresh tokens expire after seven days; complete production OAuth configuration and reauthorize before relying on unattended storage. Do not treat temporary test consent as a durable production connection. The owner callback reported a 5 TiB storage limit; this is shared account capacity, not a reservation exclusively for Binderclip.
 
+Follow-up on 2026-10-29: a live invoice attachment test detected that the old JSON merge in `connection.token` discarded the existing refresh token. Migration 029 parenthesizes the credential update so access-token renewals preserve offline access, with regression coverage for repeated renewals and token rotation. Transient Google errors no longer permanently disconnect storage. Recovery can reopen an incomplete/broken connection while preserving the existing owner and OAuth client. The production offline credential had already been discarded, so one owner reconnection remains pending; the invoice upload remains Pending for retry. Current existing Drive files are retained unchanged.
+
 ## User experience and trust boundary
 
 No storage page, provider settings, account email or external folder links belong in the Binderclip UI. Users upload/download from their permitted job. Google account consent is an operator task outside Binderclip. Knowing the public source code or public Supabase key does not grant document access.
