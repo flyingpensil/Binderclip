@@ -4,7 +4,7 @@ Binderclip is the software name. Each tenant's legal business name belongs in Co
 
 ## Live data review
 
-Read-only checks ran against the production Supabase project. The first 22 controls returned zero exceptions. The inspected dataset at 11:10 GST contained 2 jobs, 1 customer invoice (issued), 3 matched supplier bill lines, 1 receipt, 2 supplier payments, 13 journals and 0 ready attachments. Two additional checks cover negative invoice net/VAT lines and non-finite financial values. Final verification is recorded below when the upgrade is installed.
+Read-only checks ran against the production Supabase project. The first 22 controls returned zero exceptions. The inspected dataset at 11:10 GST contained 2 jobs, 1 customer invoice (issued), 3 matched supplier bill lines, 1 receipt, 2 supplier payments, 13 journals and 0 ready attachments. Two additional checks cover negative invoice net/VAT lines and non-finite financial values. After migrations 017–020 were installed, all **24 checks returned zero exceptions** at **11:20 GST**. No stored data required repair.
 
 The versioned [audit SQL](../supabase/audits/integrity.sql) runs in a read-only transaction and returns exception counts without client names, document numbers or transaction amounts. It checks:
 
@@ -37,12 +37,12 @@ Passing these controls means internally consistent records, not independent conf
 
 The audit uses the existing complete freight-to-invoice tests, posted/deferred journal constraints, RBAC and tenant isolation tests, concurrent numbering, immutable posting tests, export controls and private document tests. New regressions cover the defects above and run the read-only audit against a synthetic posted flow. Browser integration tests cover error recovery and company identity. CI also runs the retained Django and container checks.
 
-Final deployment/test evidence will be appended after successful CI and live read-only verification. This review is not a penetration test, load certification, tax certification or external accountant sign-off.
+The full backend suite passed with **61 tests**, and the final frontend suite passed with **37 browser/domain checks**. Packaging checks passed. Final publication is verified through the deployment workflow and comparison of served frontend assets against this release. This review is not a penetration test, load certification, tax certification or external accountant sign-off.
 
 ## Work needed before a paid accounting launch
 
 1. **Backups and recovery:** Choose an off-site encrypted backup destination and retention, back up PostgreSQL and attachment bytes separately, and demonstrate restoration to an isolated project. Do not assume the free Supabase plan supplies a recoverable backup.
-2. **Accounting scope:** Implement controlled credit notes/reversals, fiscal period closing, bank reconciliation, variable-rate settlement gains/losses, and currency-specific minor-unit precision before claiming a complete international accounting ERP. Posted documents must stay immutable. The current engine uses 2 monetary decimal places, including currencies whose normal minor units differ.
+2. **Accounting scope:** Implement controlled opening balances/manual journals, configurable chart of accounts and balance sheet, credit notes/reversals, fiscal period closing, bank reconciliation, variable-rate settlement gains/losses, and currency-specific minor-unit precision before claiming a complete international accounting ERP. Posted documents must stay immutable. The current engine uses 2 monetary decimal places, including currencies whose normal minor units differ.
 3. **Tax review:** Agree jurisdiction, input VAT recoverability, tax reporting and any e-invoicing obligations with the client's accountant. The current supplier workflow treats entered supplier VAT as recoverable; it does not determine eligibility from tax law.
 4. **Documents:** Finish the attachment retention, malware/file-content validation, interrupted-upload recovery, and document-level binding requirements. Current metadata checks do not constitute a malware scan.
 5. **Operations:** Establish a staging project, monitoring/alerts, capacity and rate-limit testing, release/rollback procedure and support process. Existing CI is useful but does not establish production availability or successful disaster recovery.
