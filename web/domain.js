@@ -40,5 +40,5 @@ export function validateConfig(value) {
   if(url.protocol!=='https:'||url.username||url.password||url.pathname!=='/'||url.search||url.hash||!url.hostname.endsWith('.supabase.co')) throw new Error('Invalid Supabase project URL');
   const key=String(value.publishableKey||'');
   if(!/^sb_publishable_[A-Za-z0-9_-]+$/.test(key)) throw new Error('Only a Supabase publishable key belongs in the website configuration');
-  return {url:url.origin,publishableKey:key,features:{freight:value.features?.freight===true,costSheets:value.features?.costSheets===true,documentService:value.features?.documentService===true}};
+  return {url:url.origin,publishableKey:key,features:{freight:value.features?.freight===true,costSheets:value.features?.costSheets===true,documentService:value.features?.documentService===true,recordAttachments:value.features?.recordAttachments===true}};
 }

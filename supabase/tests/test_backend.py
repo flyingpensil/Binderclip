@@ -718,6 +718,49 @@ class BackendTests(unittest.TestCase):
         self.denied(lambda:self.workflow('document.register',{'job_id':job,'kind':'BL','filename':'huge.pdf','mime':'application/pdf','bytes':'10485761'}))
         self.denied(lambda:self.workflow('task.add',{'job_id':job,'title':'Bad','due_on':'2026-10-27','assignee_id':str(uuid.uuid4())}))
 
+    def attachments(self,kind,id,action='list',data=None):
+        return self.conn.execute('select public.bc_attachments(%s,%s,%s,%s,%s)',(self.tenant,kind,id,action,Jsonb(data or {}))).fetchone()[0]
+
+    def test_quote_attachment_before_conversion_uses_own_record_and_folder(self):
+        _,quote=self.quote_fixture()
+        self.document_service('connection.save',{'owner_email':'owner@example.test','owner_sub':'owner','client_id':'client','root_id':'root-private-123','credentials':{'refresh_token':'private-refresh','access_token':'private-access'}})
+        self.document_service('connection.ready',{'root_url':'https://example.test/private'})
+        doc=self.attachments('quote',quote,'register',{'kind':'Other','filename':'quote.pdf','mime':'application/pdf','bytes':'123'})['id']
+        context=self.conn.execute("select public.bc_document_context(%s,%s,'C')",(self.tenant,doc)).fetchone()[0]
+        self.assertIsNone(context['job_id']);self.assertEqual(context['record_type'],'quote')
+        self.document_service('folder.claim',{'tenant_id':str(self.tenant),'record_type':'quote','record_id':quote,'external_id':'quote-folder-123'})
+        payload={'id':doc,'created_by':str(ADMIN),'sha256':'a'*64,'external_id':'quote-file-123'}
+        self.document_service('document.claim',payload);self.document_service('document.verified',payload)
+        self.conn.execute('select public.bc_document_finish(%s,%s)',(self.tenant,doc))
+        self.assertEqual(self.attachments('quote',quote)[0]['status'],'Ready')
+        self.owner();self.conn.execute("update binderclip.grants set scope='none' where path='sales.quotes.manage' and action='R'");self.client()
+        self.denied(lambda:self.attachments('quote',quote))
+        self.denied(lambda:self.conn.execute("select public.bc_document_context(%s,%s,'X')",(self.tenant,doc)))
+
+    def test_related_attachments_do_not_leak_into_job_or_satisfy_stage_gates(self):
+        _,_,job,purchases=self.practical_fixture()
+        metadata={'kind':'BL','filename':'vendor-bl.pdf','mime':'application/pdf','bytes':'123'}
+        doc=self.attachments('purchase',purchases[0],'register',metadata)['id']
+        self.attachments('costsheet',job,'register',{**metadata,'filename':'sheet.pdf'})
+        self.assertEqual(len(self.attachments('purchase',purchases[0])),1)
+        self.assertEqual(self.attachments('purchase',purchases[1]),[])
+        self.assertEqual(self.workspace('job_workspace',job)['documents'],[])
+        self.owner();self.conn.execute("update binderclip.job_documents set status='Ready' where id=%s",(doc,));self.client()
+        self.workflow('document.require',{'job_id':job,'kind':'BL','required_before':'Booked'})
+        self.denied(lambda:self.command('job.book',{'id':job}))
+        self.denied(lambda:self.attachments('purchase',str(uuid.uuid4()),'register',metadata))
+        self.denied(lambda:self.attachments('unknown',job,'register',metadata))
+
+    def test_invoice_attachment_preserves_posted_document_and_export_permissions(self):
+        _,supplier,job,buy=self.fixtures();self.command('job.book',{'id':job});self.bill(supplier,job,buy);self.command('cost.approve',{'id':job})
+        invoice=self.command('invoice.generate',{'job_ids':[job]})['id'];self.command('invoice.approve',{'id':invoice});self.command('invoice.issue',{'id':invoice})
+        before=self.read('invoice',invoice);journals=self.read('journal')
+        self.attachments('invoice',invoice,'register',{'kind':'Other','filename':'evidence.txt','mime':'text/plain','bytes':'10'})
+        self.assertEqual(len(self.attachments('invoice',invoice)),1)
+        self.assertEqual(self.read('invoice',invoice),before);self.assertEqual(self.read('journal'),journals)
+        self.owner();self.conn.execute("update binderclip.grants set scope='none' where path='invoicing.list.manage' and action='R'");self.client()
+        self.denied(lambda:self.attachments('invoice',invoice))
+
     def test_supplier_payments_post_and_prevent_overpayment(self):
         _,supplier,job,buy=self.fixtures();self.command('job.book',{'id':job});bill=self.bill(supplier,job,buy)
         self.workflow('supplier.pay',{'id':bill,'reference':'SP1','amount':'400','paid_on':'2026-10-27'})

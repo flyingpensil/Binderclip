@@ -30,7 +30,7 @@ def build(output=None, config=None):
             raise ValueError('Only a public Supabase publishable key may be packaged.')
         assets = output / 'assets'
         assets.mkdir(exist_ok=True)
-        for name in ('app.js', 'domain.js', 'fields.js', 'freight.js', 'costsheet.js', 'currencies.js', 'billing.js', 'navigation.js', 'tracking.js', 'practical.js', 'invoice-math.js', 'search.js', 'pickers.js', 'idle.js', 'exchange.js', 'company-settings.js', 'workspace.css'):
+        for name in ('app.js', 'domain.js', 'fields.js', 'freight.js', 'costsheet.js', 'currencies.js', 'billing.js', 'navigation.js', 'tracking.js', 'practical.js', 'invoice-math.js', 'search.js', 'pickers.js', 'idle.js', 'exchange.js', 'company-settings.js', 'workspace.css', 'record-layout.js', 'record-layout.css', 'attachments.js'):
             shutil.copyfile(ROOT / 'web' / name, assets / name)
         for name in ('app.css', 'favicon.svg'):
             shutil.copyfile(ROOT / 'static' / name, assets / name)
@@ -39,7 +39,7 @@ def build(output=None, config=None):
         html = (ROOT / 'web/index.html').read_text(encoding='utf-8').replace('__CSP__', csp)
         (output / 'index.html').write_text(html, encoding='utf-8')
         public_config = {'url': origin, 'publishableKey': key}
-        features = {name: True for name in ('freight', 'costSheets', 'documentService') if config.get('features', {}).get(name) is True}
+        features = {name: True for name in ('freight', 'costSheets', 'documentService', 'recordAttachments') if config.get('features', {}).get(name) is True}
         if features:
             public_config['features'] = features
         (output / 'config.json').write_text(json.dumps(public_config), encoding='utf-8')

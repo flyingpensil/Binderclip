@@ -61,8 +61,9 @@ export function createDocumentHandler({env=name=>globalThis.Deno?.env.get(name),
  async function uploadDrive(context,manifest,bytes,digest){
   const connection=await service('connection.get');if(connection.status!=='Ready')throw new Fault(503,'The attachment service needs owner attention.');const token=await tokenFor(connection);
   await ensureFolder(token,connection.root_id,'Binderclip files',null,{binderclipStorage:'v1'});
-  const folder=await service('folder.claim',{tenant_id:context.tenant_id,job_id:context.job_id,external_id:await generatedId(token)});
-  await ensureFolder(token,folder.external_id,context.job_number+' · '+context.tenant_id,folder.parent_id,{binderclipTenant:context.tenant_id,binderclipJob:context.job_id});
+  const recordType=context.record_type||'job',recordId=context.record_id||context.job_id;
+  const folder=await service('folder.claim',{tenant_id:context.tenant_id,job_id:context.job_id,record_type:recordType,record_id:recordId,external_id:await generatedId(token)});
+  await ensureFolder(token,folder.external_id,(context.record_number||context.job_number)+' · '+context.tenant_id,folder.parent_id,recordType==='job'?{binderclipTenant:context.tenant_id,binderclipJob:recordId}:{binderclipTenant:context.tenant_id,binderclipRecord:recordId,binderclipType:recordType});
   manifest=await service('document.claim',{id:context.id,created_by:context.created_by,sha256:digest,external_id:manifest.external_id||await generatedId(token)});
   if(!await checkRemote(token,manifest.external_id,context,digest,manifest.parent_id)){
    const boundary='binderclip-'+crypto.randomUUID(),meta={id:manifest.external_id,name:context.filename,mimeType:context.mime,parents:[manifest.parent_id],appProperties:{binderclipDocument:context.id,sha256:digest}};
