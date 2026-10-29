@@ -183,6 +183,13 @@ test('authenticated freight workspace renders and submits complete workflows',as
    await new Promise(resolve=>setImmediate(resolve));assert.ok(w.document.querySelector('.report-paper'),'A stale navigation event must not erase report selections');
   });
   await t.test('shared currency exchange has four required fields and searchable currencies',async()=>{await route('exchange','Currency pairs');await click('[data-do=exchange-edit]');for(const name of ['from_currency','from_amount','to_currency','to_amount'])assert.equal(w.document.getElementById('editor-form').elements[name].required,true);assert.ok(w.document.querySelector('#editor-fields .picker-search'));w.document.getElementById('editor').close();});
+  await t.test('company form proposes UAE defaults but keeps registration unconfirmed',async()=>{
+   await route('company','Company profile');await click('[data-do=edit-company]');const form=w.document.getElementById('editor-form');
+   assert.equal(form.elements.tax_status.value,'Unconfirmed');form.elements.country_code.value='AE';form.elements.country_code.dispatchEvent(new w.Event('change',{bubbles:true}));
+   assert.equal(form.elements.currency.value,'AED');assert.equal(form.elements.timezone.value,'Asia/Dubai');assert.equal(form.elements.tax_status.value,'Unconfirmed');
+   form.elements.tax_status.value='VAT registered';form.elements.tax_status.dispatchEvent(new w.Event('change',{bubbles:true}));assert.equal(form.elements.default_vat_rate.value,'5');
+   w.document.getElementById('editor').close();
+  });
   await t.test('sidebar follows setup, operations, billing and finance order',()=>{
    const routes=[...w.document.querySelectorAll('#nav a')].map(a=>a.hash);
    for(const [before,after]of [['#customers','#sales'],['#sales','#jobs'],['#jobs','#costsheets'],['#costsheets','#invoices'],['#invoices','#payables'],['#payables','#reports']])assert.ok(routes.indexOf(before)<routes.indexOf(after));

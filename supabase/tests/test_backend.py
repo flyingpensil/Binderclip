@@ -200,6 +200,17 @@ class BackendTests(unittest.TestCase):
         self.company_setup(tax_status='VAT registered',trn='100000000000001',default_vat_rate='5',default_tax_reason='')
         self.assertFalse(self.practical('purchase',{'id':purchases[0]})[0]['vat_recoverable'])
 
+    def test_customer_reports_follow_the_confirmed_company_timezone(self):
+        self.company_setup(timezone='UTC')
+        job,invoice=self.issued();customer=self.read('job',job)['customer_id']
+        self.owner();today=self.conn.execute('select binderclip.today()').fetchone()[0]
+        self.conn.execute("set local session_replication_role='replica'")
+        self.conn.execute("update binderclip.invoices set issued_at=((%s::date-1)::timestamp at time zone 'UTC')+interval '21 hours' where id=%s",(today,invoice))
+        self.conn.execute("set local session_replication_role='origin'");self.client()
+        from datetime import timedelta
+        result=self.practical('customer_aging',{'customer_id':customer,'as_of':str(today-timedelta(days=1))})
+        self.assertEqual(result['rows'][0]['outstanding'],'1680.00')
+
     def fixtures(self):
         customer=self.command('master.save',{'kind':'customers','code':'C1','name':'Customer','currency':'AED','data':{'credit_days':'30'}})['id']
         supplier=self.command('master.save',{'kind':'suppliers','code':'S1','name':'Carrier','currency':'AED','data':{}})['id']
