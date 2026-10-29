@@ -29,6 +29,7 @@ end $$;
 create function public.bc_rates(p_tenant uuid,p_action text default 'list',p_data jsonb default '{}') returns jsonb language plpgsql security definer set search_path='' as $$
 declare member_row binderclip.members:=binderclip.member(p_tenant);row_value binderclip.fx_rates;target uuid:=nullif(p_data->>'id','')::uuid;result jsonb;
 begin
+ -- Prefer the local payload over similarly named JSON columns in source tables.
  if p_action='quote' then result:=binderclip.fx_quote(p_tenant,p_data->>'from_currency',p_data->>'to_currency');
  elsif p_action='list' then
   select coalesce(jsonb_agg(to_jsonb(e) order by e.from_currency,e.to_currency),'[]') into result from binderclip.fx_rates e where e.tenant_id=p_tenant and binderclip.allowed(p_tenant,'masters.rates.manage','R',e.created_by,e.branch);
@@ -72,6 +73,7 @@ do $$declare definition text;begin
 end $$;
 
 create or replace function public.bc_command(p_tenant uuid,p_action text,p_data jsonb default '{}') returns jsonb language plpgsql security definer set search_path='' as $$
+#variable_conflict use_variable
 declare m binderclip.members:=binderclip.member(p_tenant);data jsonb:=p_data;q jsonb;result jsonb;base text;
 begin
  select currency into strict base from binderclip.companies where id=p_tenant;
@@ -85,6 +87,7 @@ begin
  return result;
 end $$;
 create or replace function public.bc_costsheet(p_tenant uuid,p_action text,p_data jsonb default '{}') returns jsonb language plpgsql security definer set search_path='' as $$
+#variable_conflict use_variable
 declare m binderclip.members:=binderclip.member(p_tenant);data jsonb:=p_data;q jsonb;result jsonb;base text;l binderclip.cost_lines;
 begin
  if p_action='line.save' then
@@ -98,6 +101,7 @@ begin
  return result;
 end $$;
 create or replace function public.bc_workflow(p_tenant uuid,p_action text,p_data jsonb default '{}') returns jsonb language plpgsql security definer set search_path='' as $$
+#variable_conflict use_variable
 declare m binderclip.members:=binderclip.member(p_tenant);data jsonb:=p_data;q jsonb;result jsonb;base text;old_row binderclip.quotations;
 begin
  if p_action='quote.save' then
@@ -111,6 +115,7 @@ begin
  return result;
 end $$;
 create or replace function public.bc_practical(p_tenant uuid,p_action text,p_data jsonb default '{}') returns jsonb language plpgsql security definer set search_path='' as $$
+#variable_conflict use_variable
 declare m binderclip.members:=binderclip.member(p_tenant);data jsonb:=p_data;q jsonb;result jsonb;base text;old_row binderclip.purchase_invoices;inv binderclip.invoices;
 begin
  if p_action='purchase.save' then
