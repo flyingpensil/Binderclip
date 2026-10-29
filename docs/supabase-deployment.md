@@ -61,7 +61,7 @@ Run `npm test` for browser decimal/export/config checks. The Supabase CI job app
 
 ## Current upgrades and commercial launch
 
-Install migrations 010–020 in numerical order after the earlier migrations. Never rerun the initial schema against an existing project. Test migrations first against a disposable database. Migrations 017–020 strengthen decimal validation, Dubai date cutoffs and invoice adjustment allocation without rewriting existing business rows or granting browser access to private tables.
+Install migrations 010–021 in numerical order after the earlier migrations. Never rerun the initial schema against an existing project. Test migrations first against a disposable database. Migrations 017–021 strengthen decimal validation, Dubai date cutoffs and invoice adjustment allocation without rewriting existing business rows or granting browser access to private tables.
 
 The read-only [integrity audit](../supabase/audits/integrity.sql) reconciles 24 structural/accounting controls. It is not a substitute for checking external source invoices, bank statements, VAT eligibility or backup restoration.
 

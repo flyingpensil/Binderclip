@@ -4,7 +4,7 @@ Binderclip is the software name. Each tenant's legal business name belongs in Co
 
 ## Live data review
 
-Read-only checks ran against the production Supabase project. The first 22 controls returned zero exceptions. The inspected dataset at 11:10 GST contained 2 jobs, 1 customer invoice (issued), 3 matched supplier bill lines, 1 receipt, 2 supplier payments, 13 journals and 0 ready attachments. Two additional checks cover negative invoice net/VAT lines and non-finite financial values. After migrations 017–020 were installed, all **24 checks returned zero exceptions** at **11:20 GST**. No stored data required repair.
+Read-only checks ran against the production Supabase project. The first 22 controls returned zero exceptions. The inspected dataset at 11:10 GST contained 2 jobs, 1 customer invoice (issued), 3 matched supplier bill lines, 1 receipt, 2 supplier payments, 13 journals and 0 ready attachments. Two additional checks cover negative invoice net/VAT lines and non-finite financial values. After migrations 017–021 were installed, all **24 checks returned zero exceptions** at **11:20 GST**. No stored data required repair.
 
 The versioned [audit SQL](../supabase/audits/integrity.sql) runs in a read-only transaction and returns exception counts without client names, document numbers or transaction amounts. It checks:
 
@@ -23,7 +23,7 @@ Passing these controls means internally consistent records, not independent conf
 
 | Finding | Correction and regression evidence |
 |---|---|
-| Overprecision and NaN could reach numeric columns through direct API requests | Server-side precision checks run before storage/posting in every financial command. Quantity supports 3 places, amounts 2, percentage 2, FX 8; invalid values are rejected rather than silently rounded. |
+| Overprecision and NaN could reach numeric columns through direct API requests | Server-side precision checks run before storage/posting in every financial command. Quantity supports 3 places, amounts 2, percentage 2, FX 8; job weights/volume support 3 places and packages whole numbers; invalid values are rejected rather than silently rounded. |
 | Direct supplier matching lacked the complete date/reference checks | Reject blank vendor references, future invoice dates and due dates before the invoice. Existing role and job locks still apply. |
 | Receipts could have a blank reference or precede the invoice date | Reject both at the protected command boundary. Supplier payments also require a reference. Historical test fixtures now specify appropriate invoice dates. |
 | Payables ageing could use backdated document/payment dates without respecting when they were posted | Include only bills and payments posted by the selected Dubai cutoff. Tests cover late posting and a backdated payment. |
@@ -37,7 +37,7 @@ Passing these controls means internally consistent records, not independent conf
 
 The audit uses the existing complete freight-to-invoice tests, posted/deferred journal constraints, RBAC and tenant isolation tests, concurrent numbering, immutable posting tests, export controls and private document tests. New regressions cover the defects above and run the read-only audit against a synthetic posted flow. Browser integration tests cover error recovery and company identity. CI also runs the retained Django and container checks.
 
-The full backend suite passed with **61 tests**, and the final frontend suite passed with **37 browser/domain checks**. Packaging checks passed. Final publication is verified through the deployment workflow and comparison of served frontend assets against this release. This review is not a penetration test, load certification, tax certification or external accountant sign-off.
+The full backend suite passed with **62 tests**, and the final frontend suite passed with **37 browser/domain checks**. Packaging checks passed. Final publication is verified through the deployment workflow and comparison of served frontend assets against this release. This review is not a penetration test, load certification, tax certification or external accountant sign-off.
 
 ## Work needed before a paid accounting launch
 

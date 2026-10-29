@@ -141,6 +141,12 @@ class BackendTests(unittest.TestCase):
         result=self.read('invoice',invoice)
         self.assertEqual(result['total'],'0.00');self.assertTrue(all(x['net']=='0.00' and x['tax']=='0.00' for x in result['items']))
 
+    def test_job_measures_match_the_entry_form_precision(self):
+        customer=self.command('master.save',{'kind':'customers','name':'Cargo customer','currency':'AED'})['id']
+        for extra in [{'packages':'1.5'},{'gross_weight':'NaN'},{'volume':'1.0001'}]:
+            self.denied(lambda:self.command('job.save',{'customer_id':customer,'data':{'pol':'Shanghai','pod':'Dubai',**extra}}))
+        self.assertEqual(self.read('jobs'),[])
+
     def fixtures(self):
         customer=self.command('master.save',{'kind':'customers','code':'C1','name':'Customer','currency':'AED','data':{'credit_days':'30'}})['id']
         supplier=self.command('master.save',{'kind':'suppliers','code':'S1','name':'Carrier','currency':'AED','data':{}})['id']
