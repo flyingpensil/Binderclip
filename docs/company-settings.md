@@ -19,7 +19,7 @@ Save only information confirmed with the client. The country preset is a conveni
 - For a company confirmed as not VAT registered, new sales VAT is blocked above 0%, and supplier VAT is expensed in job costs. The supplier payable still includes the full VAT amount.
 - Cost-sheet billed revenue uses allocated invoice discounts/adjustments; line totals agree with the job's profitability figures. Non-recoverable supplier VAT is included in actual cost rows and totals.
 
-Existing invoice snapshots, saved rates, supplier VAT snapshots and posted journals are not rewritten when settings change. Existing unconfirmed documents retain the legacy treatment; an accountant must review any historical correction through a controlled accounting process.
+Existing invoice snapshots, saved rates, supplier VAT snapshots and posted journals are not rewritten when settings change. If a draft invoice was created before the profile was confirmed, use **Refresh company details** on that draft and record a reason. This refreshes only the legal company snapshot, keeps prices/FX/customer details unchanged, and is blocked after approval. Existing unconfirmed documents retain the legacy treatment; an accountant must review any historical correction through a controlled accounting process.
 
 The current monetary engine uses two decimal places. Currency selection alone does not supply zero-/three-decimal currency accounting, VAT filing, tax eligibility decisions, credit notes, fiscal closing or bank reconciliation.
 

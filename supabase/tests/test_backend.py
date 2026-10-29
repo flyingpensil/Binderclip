@@ -214,6 +214,20 @@ class BackendTests(unittest.TestCase):
         result=self.practical('customer_aging',{'customer_id':customer,'as_of':str(today-timedelta(days=1))})
         self.assertEqual(result['rows'][0]['outstanding'],'1680.00')
 
+    def test_draft_company_snapshot_refresh_is_explicit_and_stops_at_approval(self):
+        job,invoice=self.ready();before=self.read('invoice',invoice)
+        self.company_setup(country_code='AE',tax_status='VAT registered',trn='100000000000001',name='Confirmed Logistics LLC')
+        self.assertEqual(self.read('invoice',invoice)['snapshot']['company']['tax_status'],'Unconfirmed')
+        self.denied(lambda:self.practical('invoice.refresh_company',{'id':invoice,'reason':''}))
+        self.practical('invoice.refresh_company',{'id':invoice,'reason':'Client confirmed company details'})
+        refreshed=self.read('invoice',invoice)
+        self.assertEqual(refreshed['snapshot']['company']['name'],'Confirmed Logistics LLC');self.assertEqual(refreshed['total'],before['total'])
+        self.assertEqual(refreshed['fx_rate'],before['fx_rate']);self.assertEqual(refreshed['items'],before['items'])
+        self.command('invoice.approve',{'id':invoice})
+        self.denied(lambda:self.practical('invoice.refresh_company',{'id':invoice,'reason':'Too late'}))
+        self.command('invoice.issue',{'id':invoice});self.company_setup(name='Future Company Name LLC')
+        self.assertEqual(self.read('invoice',invoice)['snapshot']['company']['name'],'Confirmed Logistics LLC')
+
     def fixtures(self):
         customer=self.command('master.save',{'kind':'customers','code':'C1','name':'Customer','currency':'AED','data':{'credit_days':'30'}})['id']
         supplier=self.command('master.save',{'kind':'suppliers','code':'S1','name':'Carrier','currency':'AED','data':{}})['id']
