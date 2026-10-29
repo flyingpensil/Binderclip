@@ -147,6 +147,59 @@ class BackendTests(unittest.TestCase):
             self.denied(lambda:self.command('job.save',{'customer_id':customer,'data':{'pol':'Shanghai','pod':'Dubai',**extra}}))
         self.assertEqual(self.read('jobs'),[])
 
+    def company_setup(self,**changes):
+        c=self.conn.execute('select public.bc_session()').fetchone()[0]['memberships'][0]['company']
+        values={k:c[k] for k in ['name','trn','address','currency','tolerance','country_code','timezone','tax_status','default_vat_rate','default_tax_reason']}
+        return self.command('company.save',{**values,**changes})
+
+    def test_company_tax_setup_requires_explicit_valid_registration(self):
+        session=self.conn.execute('select public.bc_session()').fetchone()[0]
+        self.assertEqual(session['memberships'][0]['company']['tax_status'],'Unconfirmed')
+        self.denied(lambda:self.company_setup(country_code='AE',tax_status='VAT registered',trn='123'))
+        self.denied(lambda:self.company_setup(country_code='AE',tax_status='VAT registered',trn='100000000000001',default_vat_rate='0',default_tax_reason=''))
+        self.company_setup(country_code='AE',tax_status='VAT registered',trn='100000000000001',default_vat_rate='5')
+        company=self.conn.execute('select public.bc_session()').fetchone()[0]['memberships'][0]['company']
+        self.assertEqual(company['country_code'],'AE');self.assertEqual(company['tax_status'],'VAT registered')
+        self.assertFalse(company['financial_settings_locked'])
+
+    def test_base_currency_and_timezone_lock_after_financial_entry(self):
+        self.company_setup(currency='USD',timezone='UTC')
+        customer=self.command('master.save',{'kind':'customers','name':'USD customer','currency':'USD'})['id']
+        job=self.command('job.save',{'customer_id':customer,'data':{'pol':'Shanghai','pod':'Dubai'}})['id']
+        self.command('cost.add',{'job_id':job,'side':'SELL','service':'Freight','quantity':'1','unit_rate':'10','currency':'USD','tax_rate':'5'})
+        self.denied(lambda:self.company_setup(currency='EUR'))
+        self.denied(lambda:self.company_setup(timezone='Asia/Dubai'))
+        company=self.conn.execute('select public.bc_session()').fetchone()[0]['memberships'][0]['company']
+        self.assertTrue(company['financial_settings_locked']);self.assertEqual(company['currency'],'USD')
+        self.assertEqual(self.conn.execute("select current_setting('binderclip.company_timezone')").fetchone()[0],'UTC')
+
+    def test_confirmed_sales_defaults_apply_only_to_new_lines(self):
+        _,_,job,_=self.fixtures()
+        self.company_setup(country_code='AE',tax_status='VAT registered',trn='100000000000001',default_vat_rate='0',default_tax_reason='Client reviewed zero-rated service')
+        new=self.command('cost.add',{'job_id':job,'side':'SELL','service':'New reviewed service','quantity':'1','unit_rate':'10','currency':'AED'})['id']
+        rows=self.read('job',job)['lines'];line=next(l for l in rows if l['id']==new)
+        self.assertEqual(line['tax_rate'],'0.00');self.assertEqual(line['exemption'],'Client reviewed zero-rated service')
+        self.assertTrue(any(l['side']=='SELL' and l['id']!=new and l['tax_rate']=='5.00' for l in rows))
+
+    def test_not_registered_company_expenses_vendor_vat_and_cannot_charge_sales_vat(self):
+        self.company_setup(country_code='AE',tax_status='Not VAT registered')
+        customer,suppliers,job,purchases=self.practical_fixture()
+        self.practical('costsheet.import',{'job_id':job,'invoice_ids':purchases})
+        for line in self.read('job',job)['lines']:
+            if line['side']=='SELL':
+                self.costsheet('line.save',{'job_id':job,'line_id':line['id'],'side':'SELL','service':line['service'],'quantity':line['quantity'],'unit_rate':'600' if line['quantity']=='2.000' else '300','currency':'AED','reason':'Agreed charge'})
+        self.denied(lambda:self.command('cost.add',{'job_id':job,'side':'SELL','service':'Invalid VAT','quantity':'1','unit_rate':'10','currency':'AED','tax_rate':'5'}))
+        self.practical('costsheet.book_match',{'job_id':job})
+        detail=self.costsheet('detail',{'job_id':job})
+        self.assertEqual(detail['figures']['actual_buy'],'1260.00');self.assertEqual(detail['figures']['margin'],'240.00')
+        self.command('cost.approve',{'id':job});invoice=self.command('invoice.generate',{'job_ids':[job]})['id']
+        self.command('invoice.approve',{'id':invoice});self.command('invoice.issue',{'id':invoice})
+        self.assertEqual(self.read('invoice',invoice)['tax_total'],'0.00')
+        tb=self.report('trial_balance')['rows'];self.assertFalse(any(r['account']=='1200 VAT recoverable' for r in tb))
+        self.assertEqual(next(r for r in tb if r['account']=='5000 Direct costs')['balance'],'1260.00')
+        self.company_setup(tax_status='VAT registered',trn='100000000000001',default_vat_rate='5',default_tax_reason='')
+        self.assertFalse(self.practical('purchase',{'id':purchases[0]})[0]['vat_recoverable'])
+
     def fixtures(self):
         customer=self.command('master.save',{'kind':'customers','code':'C1','name':'Customer','currency':'AED','data':{'credit_days':'30'}})['id']
         supplier=self.command('master.save',{'kind':'suppliers','code':'S1','name':'Carrier','currency':'AED','data':{}})['id']

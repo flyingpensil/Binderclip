@@ -23,6 +23,7 @@ jobs:
       - run: node --check web/pickers.js
       - run: node --check web/search.js
       - run: node --check web/exchange.js
+      - run: node --check web/company-settings.js
       - uses: actions/setup-python@v5
         with:
           python-version: '3.13'

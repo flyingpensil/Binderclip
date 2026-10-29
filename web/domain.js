@@ -21,8 +21,8 @@ export function lineAmount(line) {
   const product=scaled(line.quantity,3)*scaled(line.unit_rate,2);
   return decimal((product+500n)/1000n);
 }
-export const businessDate=(date=new Date())=>date.toLocaleDateString('en-CA',{timeZone:'Asia/Dubai'});
-export function recordDate(value){const text=String(value||'');if(text.length<=10)return text;const date=new Date(text);return Number.isNaN(date.getTime())?text.slice(0,10):businessDate(date);}
+export const businessDate=(date=new Date(),timeZone='Asia/Dubai')=>date.toLocaleDateString('en-CA',{timeZone});
+export function recordDate(value,timeZone='Asia/Dubai'){const text=String(value||'');if(text.length<=10)return text;const date=new Date(text);return Number.isNaN(date.getTime())?text.slice(0,10):businessDate(date,timeZone);}
 export function displayStatus(invoice,today=businessDate()) {
   return ['Issued','Partially Paid'].includes(invoice.status)&&invoice.due_date<today?'Overdue':invoice.status;
 }
