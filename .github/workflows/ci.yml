@@ -19,6 +19,10 @@ jobs:
       - run: node --check web/tracking.js
       - run: node --check web/practical.js
       - run: node --check web/invoice-math.js
+      - run: node --check web/idle.js
+      - run: node --check web/pickers.js
+      - run: node --check web/search.js
+      - run: node --check web/exchange.js
       - uses: actions/setup-python@v5
         with:
           python-version: '3.13'

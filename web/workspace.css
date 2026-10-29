@@ -14,3 +14,22 @@
 .entry-lines table{min-width:850px;table-layout:fixed;width:100%}.entry-lines th,.entry-lines td{padding:9px 6px}.entry-lines input{min-width:0;font-size:11px}.entry-lines td:nth-child(2),.entry-lines td:nth-child(3),.entry-lines td:nth-child(4),.entry-lines td:nth-child(7),.entry-lines .line-amount{min-width:0}.entry-lines th:nth-child(1){width:4%}.entry-lines th:nth-child(2){width:20%}.entry-lines th:nth-child(3){width:16%}.entry-lines th:nth-child(4){width:9%}.entry-lines th:nth-child(5){width:8%}.entry-lines th:nth-child(6){width:11%}.entry-lines th:nth-child(7){width:14%}.entry-lines th:nth-child(8){width:18%}
 
 .entry-lines td{white-space:normal;vertical-align:top}.entry-lines td input:not([type=hidden]){display:block;margin:3px 0;max-width:100%}
+/* Searchable controls retain native form values and keyboard selection. */
+.multi-picker,.select-picker{position:relative;min-width:0;width:100%}
+.multi-picker summary,.select-picker summary{cursor:pointer;border:1px solid var(--border,#dce3e8);border-radius:8px;padding:10px 12px;background:#fff;list-style:none;min-height:42px;font-size:14px}
+.multi-picker summary:after,.select-picker summary:after{content:'⌄';float:right;margin-left:12px;color:#64748b}
+.multi-picker [data-selection-count]{display:block;color:#52647a;font-size:12px;margin-top:3px}
+.picker-popup{position:absolute;top:calc(100% + 5px);left:0;right:0;z-index:40;background:#fff;border:1px solid #cdd9e2;border-radius:10px;padding:10px;box-shadow:0 8px 24px #23374b26;animation:picker-enter .12s ease-out}
+.picker-search{width:100%;margin-bottom:8px}
+.picker-options{max-height:230px;overflow:auto}
+.picker-option{display:flex;align-items:center;gap:9px;padding:9px 6px;cursor:pointer;font-size:14px}
+.picker-option input{width:auto;margin:0}
+.picker-option:hover{background:#eef8f5}
+.picker-option[hidden]{display:none}
+.select-picker select{width:100%;min-height:90px;border:0;box-shadow:none}
+.select-picker option{padding:8px;white-space:normal}
+.picker-empty{color:#64748b;padding:8px;font-size:13px}
+.line-save-notice{display:block;color:#08745b;font-size:12px;font-weight:600;margin-top:6px;white-space:nowrap}
+.line-saved{background:#edf9f3}
+@keyframes picker-enter{from{opacity:0;transform:translateY(-3px)}to{opacity:1;transform:translateY(0)}}
+@media(prefers-reduced-motion:reduce){.picker-popup{animation:none}}

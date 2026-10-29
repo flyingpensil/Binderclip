@@ -12,7 +12,7 @@ test('authenticated freight workspace renders and submits complete workflows',as
  for(const k of globals)Object.defineProperty(globalThis,k,{value:k==='window'?w:w[k],configurable:true,writable:true});
  const oldFetch=globalThis.fetch,oldInterval=globalThis.setInterval;globalThis.setInterval=()=>0;
  w.HTMLDialogElement.prototype.showModal=function(){this.open=true;};w.HTMLDialogElement.prototype.close=function(){this.open=false;};
- const paths=['overview.dashboard.view','jobs.list.manage','costs.detail.manage','customers.list.manage','suppliers.list.manage','sales.enquiries.manage','sales.quotes.manage','sales.quotes.approve','sales.quotes.convert','sales.quotes.print','operations.timeline.manage','operations.tasks.manage','operations.documents.manage','operations.requirements.manage','finance.payments.manage','reports.finance.view','reports.journal.view','settings.roles.manage','settings.members.manage','settings.company.manage','invoicing.list.manage'];
+ const paths=['masters.rates.manage','overview.dashboard.view','jobs.list.manage','costs.detail.manage','customers.list.manage','suppliers.list.manage','sales.enquiries.manage','sales.quotes.manage','sales.quotes.approve','sales.quotes.convert','sales.quotes.print','operations.timeline.manage','operations.tasks.manage','operations.documents.manage','operations.requirements.manage','finance.payments.manage','reports.finance.view','reports.journal.view','settings.roles.manage','settings.members.manage','settings.company.manage','invoicing.list.manage'];
  const member={tenant_id:'tenant',display_name:'Admin1',branch:'Dubai',email:'admin@example.test',company:{name:'Binderclip',currency:'AED'},grants:paths.flatMap(path=>['C','R','U','X'].map(action=>({path,action,scope:'global',can_export:true})))};
  const calls=[],uploads=[];let commandError=null,uploadError=null;
  let invoiceReady=false,noCustomers=false;
@@ -26,6 +26,8 @@ test('authenticated freight workspace renders and submits complete workflows',as
  const costSheet={...job,status:'Booked',approved:false,locked_at:null,base_currency:'AED',company_name:'Binderclip',has_invoices:false,unbilled_charges:'1',buy_lines:'1',matched_bills:'1',figures:{expected_buy:'1000.00',actual_buy:'1100.00',sell:'1600.00',expected_margin:'600.00',margin:'500.00',margin_percent:'31.25'},lines:lines.map(l=>({...l,currency:'AED',fx_rate:'1',supplier_name:l.side==='BUY'?'Carrier':null,supplier_id:l.side==='BUY'?'s1':null})),line_values:[{id:'buy1',estimated_base:'1000.00',actual_base:'1100.00'},{id:'sell1',estimated_base:'1600.00',actual_base:'1600.00'}],bills:[{id:'b1',line_id:'buy1',number:'BILL-1',quantity:'2',unit_rate:'550',currency:'AED',variance:'100.00',status:'Matched'}]};
  async function fakeRpc(name,args){calls.push({name,args});if(name==='bc_session')return {data:{user_id:'user',memberships:[member],permissions:[]}};
   if(name==='bc_practical'){const purchase={id:'p1',number:'PINV-000001',reference:'VENDOR-1',job_id:'j1',job_number:'J1',supplier_id:'s1',supplier_name:'Carrier',status:'Draft',match_status:'Draft',currency:'AED',fx_rate:'1',invoice_date:'2026-10-27',due_date:'2026-11-27',net:'1000.00',vat:'50.00',lines:[{id:'pi1',description:'Ocean freight',comments:'Carrier service',unit:'container',quantity:'2',unit_rate:'500',tax_rate:'5'}]};return {data:['purchases','purchase'].includes(args.p_action)?[purchase]:['statement','customer_aging'].includes(args.p_action)?{customer:{name:'Customer'},as_of:'2026-10-28',rows:[],totals:[{currency:'AED',opening:'0.00',debit:'1000.00',credit:'400.00',closing:'600.00'}]}:{id:args.p_action==='invoice.save'?'invoice-created':'p1'}};}
+  if(name==='bc_activity')return {data:{idle_seconds:7200}};
+  if(name==='bc_rates')return {data:args.p_action==='quote'?{rate:'1',source:'Same currency'}:[]};
   if(name==='bc_billing')return {data:args.p_kind==='supplier_payments'?[]:args.p_kind==='invoice.create'?{id:'invoice-created'}:[{id:'j1',number:'J1',customer_id:'c1',customer_name:'Customer',status:invoiceReady?'Booked':'Draft',approved:invoiceReady,locked_at:null,buy_count:'1',charge_count:'1',unbilled_count:'1',matched_count:invoiceReady?'1':'0',billing_groups:'1',currency:'AED',fx_rate:'1',credit_days:'30'}]};
   if(name==='bc_costsheet')return {data:args.p_action==='detail'||args.p_action==='print'?costSheet:args.p_action==='list'?[{...costSheet,customer_name:'Customer',sheet_status:'Open'}]:args.p_action==='quotes'?[{id:'q1',name:'QUO-1'}]:{id:'created'}};
   if(['bc_workflow','bc_command'].includes(name))return commandError?{error:{message:commandError}}:{data:{id:args.p_action==='quote.convert'?'j1':'created'}};
@@ -36,6 +38,7 @@ test('authenticated freight workspace renders and submits complete workflows',as
   throw new Error('Unexpected RPC '+name);
  }
  w.supabase={createClient:()=>({rpc:fakeRpc,auth:{getUser:async()=>({data:{user:{id:'user'}}}),onAuthStateChange:()=>{},signOut:async()=>({})},storage:{from:()=>({upload:async(path,file,options)=>{uploads.push({path,file,options});return {error:uploadError};}})}})};
+ let scrollResult=null;w.scrollTo=value=>{scrollResult=value;};
  globalThis.fetch=async()=>({ok:true,json:async()=>({url:'https://example.supabase.co',publishableKey:'sb_publishable_test',features:{freight:true,costSheets:true}})});
  const wait=async predicate=>{const deadline=Date.now()+2000;while(!predicate()){if(Date.now()>deadline)throw new Error('DOM condition timed out: '+w.document.body.textContent.slice(-800));await new Promise(resolve=>setImmediate(resolve));}};
  const click=async selector=>{const el=w.document.querySelector(selector);assert.ok(el,'Missing '+selector);el.click();await new Promise(resolve=>setImmediate(resolve));};
@@ -51,6 +54,7 @@ test('authenticated freight workspace renders and submits complete workflows',as
   });
   await t.test('quotation displays exact sell totals and approval uses a server command',async()=>{
    await route('quote/q1','QUO-1');assert.match(w.document.getElementById('screen').textContent,/1,680.00/);
+   Object.defineProperty(w,'scrollY',{value:640,configurable:true});
    await click('[data-line="sell1"]');await wait(()=>w.document.getElementById('editor').open);
    await submit({unit_rate:'850.00'});
    assert.ok(calls.some(c=>c.args.p_action==='quote.line'&&c.args.p_data.line_id==='sell1'&&c.args.p_data.unit_rate==='850.00'));
@@ -91,8 +95,10 @@ test('authenticated freight workspace renders and submits complete workflows',as
    await route('costsheets','Job financials');await route('costsheet/j1','Supplier costs — what we pay');
    const text=w.document.getElementById('screen').textContent;assert.match(text,/1,100.00/);assert.match(text,/1,600.00/);assert.match(text,/500.00/);assert.match(text,/31.25%/);
    assert.match(text,/BILL-1/);assert.match(text,/Customer charges — what we bill/);
+   Object.defineProperty(w,'scrollY',{value:640,configurable:true});
    await click('[data-line="sell1"]');await wait(()=>w.document.getElementById('editor').open);
    await submit({unit_rate:'850.00',reason:'Agreed rate correction'});
+   assert.equal(w.document.querySelector('.line-save-notice')?.textContent,'Saved successfully.');assert.equal(scrollResult.top,640);
    assert.ok(calls.some(c=>c.name==='bc_costsheet'&&c.args.p_action==='line.save'&&c.args.p_data.line_id==='sell1'&&c.args.p_data.reason==='Agreed rate correction'));
    await click('[data-do="costsheet-print"]');await wait(()=>printed.includes('INTERNAL COST SHEET'));
    assert.match(printed,/550.00/);assert.match(printed,/500.00/);
@@ -107,8 +113,8 @@ test('authenticated freight workspace renders and submits complete workflows',as
    await route('customers','Customer');await click('[data-do="new-master"][data-kind="customers"]');await wait(()=>w.document.getElementById('editor').open);
    assert.equal(w.document.querySelector('[name=code]').readOnly,true);
    assert.ok(w.document.querySelectorAll('[name=currency] option').length>150);
-   for(const field of ['data.nature_of_business','data.trn','data.crn','data.default_fx_rate'])assert.ok(w.document.querySelector(`[name="${field}"]`));
-   assert.equal(w.document.querySelector('[name="data.shipping_address"]'),null);
+   for(const field of ['data.nature_of_business','data.trn','data.crn'])assert.ok(w.document.querySelector(`[name="${field}"]`));
+   assert.equal(w.document.querySelector('[name="data.shipping_address"]'),null);assert.equal(w.document.querySelector('[name="data.default_fx_rate"]'),null);assert.ok(w.document.querySelector('datalist option[value=Manufacturing]'));
    await submit({name:'Japanese customer',currency:'JPY'});
    assert.ok(calls.some(c=>c.args.p_action==='master.save'&&c.args.p_data.currency==='JPY'&&c.args.p_data.code===''));
    await route('jobs','Every shipment');await click('[data-do="new-job"]');await wait(()=>w.document.getElementById('editor').open);
@@ -166,9 +172,11 @@ test('authenticated freight workspace renders and submits complete workflows',as
    w.dispatchEvent(new w.HashChangeEvent('hashchange',{newURL:'https://example.test/Binderclip/#jobs'}));
    await new Promise(resolve=>setImmediate(resolve));assert.ok(w.document.querySelector('.report-paper'),'A stale navigation event must not erase report selections');
   });
+  await t.test('shared currency exchange has four required fields and searchable currencies',async()=>{await route('exchange','Currency pairs');await click('[data-do=exchange-edit]');for(const name of ['from_currency','from_amount','to_currency','to_amount'])assert.equal(w.document.getElementById('editor-form').elements[name].required,true);assert.ok(w.document.querySelector('#editor-fields .picker-search'));w.document.getElementById('editor').close();});
   await t.test('sidebar follows setup, operations, billing and finance order',()=>{
    const routes=[...w.document.querySelectorAll('#nav a')].map(a=>a.hash);
    for(const [before,after]of [['#customers','#sales'],['#sales','#jobs'],['#jobs','#costsheets'],['#costsheets','#invoices'],['#invoices','#payables'],['#payables','#reports']])assert.ok(routes.indexOf(before)<routes.indexOf(after));
   });
- }finally{dom.window.close();globalThis.fetch=oldFetch;globalThis.setInterval=oldInterval;for(const [key,descriptor]of saved)if(descriptor)Object.defineProperty(globalThis,key,descriptor);else delete globalThis[key];}
+ }finally{dom.window.close();let scrollResult=null;w.scrollTo=value=>{scrollResult=value;};
+ globalThis.fetch=oldFetch;globalThis.setInterval=oldInterval;for(const [key,descriptor]of saved)if(descriptor)Object.defineProperty(globalThis,key,descriptor);else delete globalThis[key];}
 });

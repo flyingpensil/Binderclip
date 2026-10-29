@@ -1,0 +1,10 @@
+import {escapeHTML as h,money} from './domain.js';
+import {currencyOptions} from './currencies.js';
+import {tracking} from './tracking.js';
+export function createExchangeUI(ctx){const {state,rpc,can,heading,panel,table,button,edit}=ctx;
+ const request=(action,data={})=>rpc('bc_rates',{p_tenant:state.member.tenant_id,p_action:action,p_data:data});
+ const quote=(from,to)=>request('quote',{from_currency:from,to_currency:to});
+ async function screen(){const rows=await request('list');state.exchangeRows=rows;return heading('Currency exchange','Shared company rates. Enter the exact equivalence; reverse and company-base conversions are calculated automatically.',can('masters.rates.manage','C')?button('＋ Add exchange rate','exchange-edit',{},true):'')+panel('Currency pairs',table(['Currency','Amount','=','Currency','Amount','Entry history','Action'],rows.map(r=>[h(r.from_currency),h(r.from_amount),'=',h(r.to_currency),h(r.to_amount),tracking(r),can('masters.rates.manage','U')?button('Edit','exchange-edit',{id:r.id}):''])))+`<p class="read-limit">All four fields are required. Example: 1 AED = 0.27 USD; the reverse is 1 USD = 3.70370370 AED. Only one rate per currency pair is allowed. Existing document rates are retained.</p>`;}
+ function action(data){const row=state.exchangeRows?.find(r=>r.id===data.id)||{from_currency:state.member.company.currency,from_amount:'1',to_currency:'USD',to_amount:''};const fields=[{key:'from_currency',label:'From currency',type:'select',required:true,options:currencyOptions},{key:'from_amount',label:'From amount',type:'number',required:true,min:'.00000001',step:'.00000001'},{key:'to_currency',label:'To currency',type:'select',required:true,options:currencyOptions},{key:'to_amount',label:'Equivalent amount',type:'number',required:true,min:'.00000001',step:'.00000001'}];return edit(data.id?'Edit shared currency rate':'Add shared currency rate',fields,row,v=>request('save',{...v,id:data.id||null}));}
+ return {screen,action,quote,nav:['Currency exchange','exchange','masters.rates.manage','⇄']};
+}

@@ -73,6 +73,13 @@ class BackendTests(unittest.TestCase):
     def client(self): self.conn.execute('set local role authenticated')
     def denied(self,fn):
         with self.assertRaises(psycopg.Error), self.conn.transaction(): fn()
+    def test_wildcard_search_preserves_scoped_read_boundary(self):
+        self.fixtures()
+        results=self.conn.execute("select public.bc_read(%s,'suppliers',null,'C*ier')",(self.tenant,)).fetchone()[0]
+        self.assertEqual(len(results),1)
+        self.assertEqual(self.workspace('search',query='*')['suppliers'][0]['name'],'Carrier')
+        self.assertEqual(len(self.costsheet('list',{'q':'Sh?ng*'})),1)
+
     def fixtures(self):
         customer=self.command('master.save',{'kind':'customers','code':'C1','name':'Customer','currency':'AED','data':{'credit_days':'30'}})['id']
         supplier=self.command('master.save',{'kind':'suppliers','code':'S1','name':'Carrier','currency':'AED','data':{}})['id']
