@@ -67,6 +67,8 @@ class BackendTests(unittest.TestCase):
         return self.conn.execute('select public.bc_costsheet(%s,%s,%s)',(self.tenant,action,Jsonb(data or {}))).fetchone()[0]
     def practical(self,action,data=None):
         return self.conn.execute('select public.bc_practical(%s,%s,%s)',(self.tenant,action,Jsonb(data or {}))).fetchone()[0]
+    def rates(self,action='list',data=None):
+        return self.conn.execute('select public.bc_rates(%s,%s,%s)',(self.tenant,action,Jsonb(data or {}))).fetchone()[0]
     def owner(self): self.conn.execute('reset role')
     def client(self): self.conn.execute('set local role authenticated')
     def denied(self,fn):
@@ -148,7 +150,8 @@ class BackendTests(unittest.TestCase):
         other=self.command('job.save',{'customer_id':customer,'data':{'pol':'Dubai','pod':'Tokyo'}})['id']
         self.denied(lambda:self.practical('costsheet.import',{'job_id':other,'invoice_ids':purchases}))
         self.denied(lambda:self.command('job.save',{'customer_id':customer,'data':{'pol':'Dubai','pod':'Tokyo','supplier_ids':[str(uuid.uuid4())]}}))
-        self.denied(lambda:self.command('master.save',{'kind':'customers','name':'Invalid FX','currency':'AED','data':{'default_fx_rate':'2'}}))
+        customer_only=self.command('master.save',{'kind':'customers','name':'Currency only','currency':'AED','data':{'default_fx_rate':'2'}})['id']
+        self.assertNotIn('default_fx_rate',self.read('customers',customer_only)[0]['data'])
         self.owner();self.conn.execute("update binderclip.grants set scope='none' where path='costs.detail.manage'");self.client()
         self.assertEqual(self.practical('purchases',{'job_id':job}),[])
         self.denied(lambda:self.practical('costsheet.import',{'job_id':job,'invoice_ids':purchases}))
@@ -200,6 +203,7 @@ class BackendTests(unittest.TestCase):
         self.denied(lambda:self.workflow('supplier.pay',{'id':bill['id'],'reference':'EXCESS','amount':'0.01','paid_on':'2026-10-28'}))
 
     def test_customer_reports_keep_currencies_separate(self):
+        self.rates('save',{'from_currency':'USD','from_amount':'1','to_currency':'AED','to_amount':'3.6725'})
         job,invoice=self.issued();customer=self.read('invoice',invoice)['customer_id']
         supplier=self.read('suppliers')[0]['id']
         foreign=self.command('job.save',{'customer_id':customer,'data':{'pol':'Shanghai','pod':'Dubai'}})['id']
@@ -210,6 +214,39 @@ class BackendTests(unittest.TestCase):
         totals={r['currency']:r['closing'] for r in self.practical('statement',{'customer_id':customer})['totals']}
         self.assertEqual(totals,{'AED':'1680.00','USD':'10.50'})
         self.assertEqual(len(self.practical('customer_aging',{'customer_id':customer,'currency':'USD'})['rows']),1)
+
+    def test_shared_currency_pairs_reverse_and_base_cross_rates(self):
+        first=self.rates('save',{'from_currency':'AED','from_amount':'1','to_currency':'USD','to_amount':'0.27'})['id']
+        self.rates('save',{'from_currency':'OMR','from_amount':'1','to_currency':'AED','to_amount':'9.55'})
+        def quote(a,b):return self.rates('quote',{'from_currency':a,'to_currency':b})['rate']
+        self.assertEqual(quote('AED','USD'),'0.27000000');self.assertEqual(quote('USD','AED'),'3.70370370');self.assertEqual(quote('OMR','USD'),'2.57850000')
+        self.denied(lambda:self.rates('save',{'from_currency':'USD','from_amount':'1','to_currency':'AED','to_amount':'4'}))
+        self.denied(lambda:self.rates('save',{'from_currency':'EUR','from_amount':'0','to_currency':'AED','to_amount':'4'}))
+        self.denied(lambda:quote('EUR','AED'))
+        self.rates('save',{'id':first,'from_currency':'AED','from_amount':'1','to_currency':'USD','to_amount':'0.25'})
+        self.assertEqual(quote('USD','AED'),'4.00000000')
+
+    def test_shared_fx_defaults_and_source_document_rates_do_not_reprice(self):
+        pair=self.rates('save',{'from_currency':'USD','from_amount':'1','to_currency':'AED','to_amount':'3.7'})['id']
+        customer,supplier,job,_=self.fixtures()
+        purchase=self.practical('purchase.save',{'job_id':job,'supplier_id':supplier,'reference':'FOREIGN','invoice_date':'2026-10-27','due_date':'2026-11-27','currency':'USD','fx_rate':'999','lines':[{'description':'Carrier','quantity':'1','unit_rate':'100','tax_rate':'0'}]})['id']
+        self.assertEqual(self.practical('purchase',{'id':purchase})[0]['fx_rate'],'3.70000000')
+        self.rates('save',{'id':pair,'from_currency':'USD','from_amount':'1','to_currency':'AED','to_amount':'3.8'})
+        self.practical('costsheet.import',{'job_id':job,'invoice_ids':[purchase]})
+        saved=self.practical('purchase',{'id':purchase})[0]['lines'][0]
+        imported=next(l for l in self.read('job',job)['lines'] if l['id']==saved['buy_line_id'])
+        self.assertEqual(imported['fx_rate'],'3.70000000')
+        line=self.command('cost.add',{'job_id':job,'side':'SELL','service':'New FX','quantity':'1','unit_rate':'10','currency':'USD','fx_rate':'999','tax_rate':'5'})['id']
+        self.assertEqual(next(l for l in self.read('job',job)['lines'] if l['id']==line)['fx_rate'],'3.80000000')
+
+    def test_idle_activity_expires_server_side_and_cannot_be_revived(self):
+        self.conn.execute('select public.bc_activity()')
+        self.owner();self.conn.execute("update binderclip.session_activity set last_seen=now()-interval '121 minutes' where session_id=%s",(SESSION,));self.client()
+        self.denied(lambda:self.read('customers'))
+        self.denied(lambda:self.conn.execute('select public.bc_activity()'))
+        self.owner();self.conn.execute("update binderclip.session_activity set last_seen=now()-interval '119 minutes' where session_id=%s",(SESSION,));self.client()
+        self.conn.execute('select public.bc_activity()')
+        self.assertEqual(self.read('customers'),[])
 
     def test_statement_opening_and_historical_aging_exclude_later_receipts(self):
         from datetime import timedelta
