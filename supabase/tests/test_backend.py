@@ -76,7 +76,7 @@ class BackendTests(unittest.TestCase):
         return self.conn.execute('select public.bc_rates(%s,%s,%s)',(self.tenant,action,Jsonb(data or {}))).fetchone()[0]
     def owner(self): self.conn.execute('reset role')
     def document_service(self,action,data=None):
-        claims=self.conn.execute('select auth.jwt()').fetchone()[0]
+        claims=self.conn.execute("select current_setting('request.jwt.claims')::jsonb").fetchone()[0]
         self.owner()
         try:
             with self.conn.transaction():
