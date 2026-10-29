@@ -28,7 +28,7 @@ function fixture(options={}){
    if(args.p_action==='state.consume')return respond({verifier:'v'.repeat(43)});
    throw Error('Unexpected broker '+args.p_action);
   }
-  if(url==='https://oauth2.googleapis.com/token')return respond({access_token:'PRIVATE-OWNER-ACCESS',refresh_token:'PRIVATE-OWNER-REFRESH',expires_in:3600,scope:'openid email https://www.googleapis.com/auth/drive.file'});
+  if(url==='https://oauth2.googleapis.com/token')return options.tokenError?respond({error:options.tokenError,error_description:'PRIVATE-DIAGNOSTIC-DO-NOT-RETURN'},400):respond({access_token:'PRIVATE-OWNER-ACCESS',refresh_token:'PRIVATE-OWNER-REFRESH',expires_in:3600,scope:'openid email https://www.googleapis.com/auth/drive.file'});
   if(url==='https://openidconnect.googleapis.com/v1/userinfo')return respond({email:'wrong-owner@example.test',email_verified:true,sub:'wrong-owner'});
   if(url.startsWith('https://www.googleapis.com/')){
    assert.equal(init.headers.Authorization,'Bearer PRIVATE-ACCESS');
@@ -99,4 +99,14 @@ test('owner callback rejects a different verified Google account before saving c
  const response=await f.handler(new Request(base+'/owner/callback?state='+state+'&code=private-code',{headers:{Cookie:'bc_drive_setup='+state}}));
  assert.equal(response.status,403);assert.match((await response.json()).error,/designated owner/);
  assert.ok(!f.calls.some(c=>c.url.endsWith('bc_document_service')&&JSON.parse(c.init.body).p_action==='connection.save'));
+});
+test('OAuth exchange errors report safe categories without provider diagnostics',async()=>{
+ for(const reason of ['invalid_client','invalid_grant','redirect_uri_mismatch','unknown_error']){
+  const f=fixture({tokenError:reason}),start=await f.handler(new Request(base+'/owner/connect'));
+  const state=new URL(start.headers.get('Location')).searchParams.get('state');
+  const response=await f.handler(new Request(base+'/owner/callback?state='+state+'&code=private-code',{headers:{Cookie:'bc_drive_setup='+state}}));
+  assert.equal(response.status,403);const text=await response.text();assert.ok(!text.includes('PRIVATE'));assert.ok(!text.includes('private-code'));
+  if(reason==='invalid_client')assert.match(text,/Client Secret/);
+  if(reason==='invalid_grant')assert.match(text,/expired or was already used/);
+ }
 });

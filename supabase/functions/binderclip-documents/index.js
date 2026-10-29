@@ -85,7 +85,12 @@ export function createDocumentHandler({env=name=>globalThis.Deno?.env.get(name),
   if(!state||state!==stored||url.searchParams.has('error')||!url.searchParams.get('code'))throw new Fault(403,'Owner authorization was not completed. Start the connection again.');
   const pending=await service('state.consume',{state_hash:await sha256(new TextEncoder().encode(state))});
   const response=await request('https://oauth2.googleapis.com/token',{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},body:new URLSearchParams({client_id:clientId,client_secret:required('GOOGLE_DRIVE_CLIENT_SECRET'),code:url.searchParams.get('code'),code_verifier:pending.verifier,redirect_uri:callbackURL(),grant_type:'authorization_code'})});
-  if(!response.ok)throw new Fault(403,'Google authorization could not be completed. Check the backend OAuth settings and reconnect.');const credentials=await response.json();
+  if(!response.ok){
+   // Return only known categories, never Google's raw response, codes or credentials.
+   let reason='';try{reason=(await response.json()).error;}catch{}
+   const messages={invalid_client:'Google rejected the OAuth client credentials. Re-enter the Client Secret for the Binderclip private attachments client in the backend, then start a new connection.',invalid_grant:'Google authorization expired or was already used. Start a new connection and complete it once without refreshing the callback.',redirect_uri_mismatch:'The Google OAuth callback address does not match the backend configuration.',unauthorized_client:'Google has not authorized this OAuth web client for the requested connection.'};
+   throw new Fault(403,messages[reason]||'Google authorization could not be completed. Check the backend OAuth settings and reconnect.');
+  }const credentials=await response.json();
   if(!credentials.refresh_token||!credentials.scope?.split(' ').includes('https://www.googleapis.com/auth/drive.file'))throw new Fault(403,'Offline access to app-created files is required. Reconnect and approve the requested access.');
   const userResponse=await request('https://openidconnect.googleapis.com/v1/userinfo',{headers:{Authorization:'Bearer '+credentials.access_token}});if(!userResponse.ok)throw new Fault(403,'Owner identity could not be verified.');const user=await userResponse.json();
   if(user.email_verified!==true||user.email?.toLowerCase()!==ownerEmail||!user.sub)throw new Fault(403,'Storage must be authorized by the designated owner account.');
