@@ -738,7 +738,7 @@ class BackendTests(unittest.TestCase):
         self.denied(lambda:self.conn.execute("select public.bc_document_context(%s,%s,'X')",(self.tenant,doc)))
 
     def test_related_attachments_do_not_leak_into_job_or_satisfy_stage_gates(self):
-        _,_,job,purchases=self.practical_fixture()
+        _,suppliers,job,purchases=self.practical_fixture()
         metadata={'kind':'BL','filename':'vendor-bl.pdf','mime':'application/pdf','bytes':'123'}
         doc=self.attachments('purchase',purchases[0],'register',metadata)['id']
         self.attachments('costsheet',job,'register',{**metadata,'filename':'sheet.pdf'})
@@ -746,8 +746,13 @@ class BackendTests(unittest.TestCase):
         self.assertEqual(self.attachments('purchase',purchases[1]),[])
         self.assertEqual(self.workspace('job_workspace',job)['documents'],[])
         self.owner();self.conn.execute("update binderclip.job_documents set status='Ready' where id=%s",(doc,));self.client()
+        self.command('cost.add',{'job_id':job,'side':'BUY','service':'Estimated freight','supplier_id':suppliers[0],'quantity':'1','unit_rate':'10','currency':'AED','fx_rate':'1'})
+        self.command('cost.add',{'job_id':job,'side':'SELL','service':'Freight charge','quantity':'1','unit_rate':'20','currency':'AED','fx_rate':'1','tax_rate':'5'})
         self.workflow('document.require',{'job_id':job,'kind':'BL','required_before':'Booked'})
         self.denied(lambda:self.command('job.book',{'id':job}))
+        job_doc=self.attachments('job',job,'register',metadata)['id']
+        self.owner();self.conn.execute("update binderclip.job_documents set status='Ready' where id=%s",(job_doc,));self.client()
+        self.command('job.book',{'id':job})
         self.denied(lambda:self.attachments('purchase',str(uuid.uuid4()),'register',metadata))
         self.denied(lambda:self.attachments('unknown',job,'register',metadata))
 

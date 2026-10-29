@@ -5,6 +5,7 @@
   "features": {
     "freight": true,
     "costSheets": true,
-    "documentService": true
+    "documentService": true,
+    "recordAttachments": true
   }
 }

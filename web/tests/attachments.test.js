@@ -14,5 +14,6 @@ test('each document lists its own attachments and interrupted uploads reuse regi
   ui.action({do:'attachment-upload',type:'quote',record:'q1'});Object.defineProperty(document.querySelector('[name=upload]'),'files',{value:[new dom.window.File(['sample'],'quote.txt',{type:'text/plain'})]});
   await assert.rejects(submit({kind:'Other'}),/Retry the same file/);assert.equal(calls.at(-1).args.p_type,'quote');assert.equal(calls.at(-1).args.p_id,'q1');
   const registrations=()=>calls.filter(x=>x.args.p_action==='register').length;assert.equal(registrations(),1);failUpload=false;await submit({kind:'Other'});assert.equal(registrations(),1);assert.equal(uploads[1].get('document_id'),'registered-doc');assert.equal(uploads[1].get('tenant_id'),'company');
+  const limited=createAttachments({...ctx,rpc:async()=>{throw Error('Outside attachment role scope');}});const limitedPanel=await limited.section('invoice','i1');assert.match(limitedPanel,/Attachments unavailable/);assert.ok(!limitedPanel.includes('Upload file'));
  }finally{globalThis.document=oldDocument;globalThis.FormData=oldForm;dom.window.close();}
 });
