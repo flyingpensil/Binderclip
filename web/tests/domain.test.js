@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {businessDate, scaled, decimal, money, balance, lineAmount, permitted, csv, validateConfig, escapeHTML} from '../domain.js';
+import {businessDate, recordDate, scaled, decimal, money, balance, lineAmount, permitted, csv, validateConfig, escapeHTML} from '../domain.js';
 
 test('money stays exact above JavaScript safe integer and rounds half away from zero',()=>{
   assert.equal(money('9007199254740993.015'),'9,007,199,254,740,993.02');
@@ -24,3 +24,5 @@ test('website config rejects service credentials and unrelated endpoints',()=>{
 });
 
 test('business dates follow Dubai across UTC midnight boundaries',()=>{assert.equal(businessDate(new Date('2026-10-29T21:30:00Z')),'2026-10-30');});
+
+test('record dates convert timestamps but preserve user-entered document dates',()=>{assert.equal(recordDate('2026-10-29T21:30:00Z'),'2026-10-30');assert.equal(recordDate('2026-10-29'),'2026-10-29');assert.equal(recordDate(null),'');});
