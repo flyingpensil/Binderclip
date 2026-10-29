@@ -1,4 +1,5 @@
 begin;
+create index invoice_item_allocation_order on binderclip.invoice_items(invoice_id,position,id);
 create function binderclip.billed_line_base(t uuid,line_target uuid) returns numeric language sql stable security definer set search_path='' as $$
  with allocations as(
   select x.line_id,round(sum(x.net) over(partition by x.invoice_id order by x.position,x.id rows unbounded preceding)*i.fx_rate,2)

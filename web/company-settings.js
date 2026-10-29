@@ -12,6 +12,7 @@ export function operatingFields(fields,company){const locked=company.financial_s
  {key:'default_tax_reason',label:'Default zero-tax reason',type:'text',help:'Required when a VAT-registered company chooses a default rate of 0%. Not-registered status supplies its own reason.'}
  ];}
 export function suggestOperatingSettings(form,locked=false){const country=form.elements.country_code.value.trim().toUpperCase(),status=form.elements.tax_status.value;form.elements.country_code.value=country;
+ form.elements.country_code.required=status!=='Unconfirmed';if(form.elements.trn)form.elements.trn.required=status==='VAT registered';form.elements.default_vat_rate.readOnly=status==='Not VAT registered';form.elements.default_tax_reason.readOnly=status==='Not VAT registered';
  if(country==='AE'){
   if(!locked){form.elements.currency.value='AED';form.elements.timezone.value='Asia/Dubai';}
   if(status==='VAT registered'){form.elements.default_vat_rate.value='5';form.elements.default_tax_reason.value='';}
