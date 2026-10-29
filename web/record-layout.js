@@ -11,7 +11,8 @@ const groups={
  purchase:[['Lines',/Supplier invoice lines/],['Attachments',/Attachments/]]
 };
 function facts(page,r){
- if(page==='job'||page==='costsheet')return [['Customer',r.customer?.name],['Client reference / PO',r.data?.client_reference],['Activity',r.data?.activity_code],['Shipper',r.data?.shipper],['Consignee',r.data?.consignee],['Containers',r.data?.container_numbers]];
+ if(page==='costsheet')return [['Customer',r.customer?.name],['Client reference / PO',r.data?.client_reference],['Route',[r.data?.pol,r.data?.pod].filter(Boolean).join(' → ')]];
+ if(page==='job')return [['Customer',r.customer?.name],['Client reference / PO',r.data?.client_reference],['Activity',r.data?.activity_code],['Shipper',r.data?.shipper],['Consignee',r.data?.consignee],['Containers',r.data?.container_numbers]];
  if(page==='invoice')return [['Customer',r.snapshot?.customer?.name],['Invoice date',r.invoice_date],['Due date',r.due_date],['Date of supply',r.supply_date||r.invoice_date],['Exchange rate',r.fx_rate],['Payment terms',r.snapshot?.customer?.data?.payment_terms]];
  if(page==='quote')return [['Customer',r.customer_name],['Origin',r.data?.pol],['Destination',r.data?.pod],['Valid until',r.valid_until],['Mode',r.data?.mode],['Client reference',r.data?.client_reference]];
  return [['Supplier',r.supplier_name],['Vendor reference',r.reference],['Job',r.job_number],['Invoice date',r.invoice_date],['Due date',r.due_date],['Exchange rate',r.fx_rate]];
@@ -35,6 +36,8 @@ export function arrangeRecord(root,{page,id,company,snapshot}){
  for(const node of [...root.children]){
   if(node===header)continue;
   if(node.matches('.record-tracking')){add('History',node);continue;}
+  if(node.matches('.action-bar')&&!node.querySelector('form')){heading.querySelector('.button-group')?.append(...node.childNodes);node.remove();continue;}
+  if(node.matches('.notice')&&page==='costsheet'){const help=document.createElement('details');help.className='record-guidance';const title=document.createElement('summary');title.textContent='Workflow guidance';help.append(title,node);header.append(help);continue;}
   if(node.matches('.stats-grid,.costsheet-flow,.notice,.action-bar')){header.append(node);continue;}
   if(node.matches('.panel')){
    let title=node.querySelector('h2')?.textContent||'';

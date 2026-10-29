@@ -74,7 +74,7 @@ begin
 end $$;
 
 create or replace function public.bc_document_context(p_tenant uuid,p_id uuid,p_action text) returns jsonb language plpgsql security definer set search_path='' as $$
-declare d binderclip.job_documents;v jsonb;
+declare m binderclip.members:=binderclip.member(p_tenant);d binderclip.job_documents;v jsonb;
 begin
  select * into strict d from binderclip.job_documents where id=p_id and tenant_id=p_tenant;
  v:=binderclip.require_attachment(p_tenant,d.record_type,d.record_id,p_action);
@@ -83,7 +83,7 @@ begin
  elsif p_action='X' then
   if d.status<>'Ready' then raise exception 'This attachment is not ready';end if;
  else raise exception 'Unknown document action';end if;
- return jsonb_build_object('id',d.id,'tenant_id',d.tenant_id,'job_id',d.job_id,'job_number',v->>'number','record_type',d.record_type,'record_id',d.record_id,'record_number',v->>'number,'filename',d.filename,'mime',d.mime,'bytes',d.bytes::text,'status',d.status,'object_path',d.object_path,'created_by',d.created_by);
+ return jsonb_build_object('id',d.id,'tenant_id',d.tenant_id,'job_id',d.job_id,'job_number',v->>'number','record_type',d.record_type,'record_id',d.record_id,'record_number',v->>'number','filename',d.filename,'mime',d.mime,'bytes',d.bytes::text,'status',d.status,'object_path',d.object_path,'created_by',d.created_by);
 end $$;
 create or replace function public.bc_document_access(p_name text,p_action text) returns boolean language plpgsql security definer set search_path='' as $$
 declare d binderclip.job_documents;
