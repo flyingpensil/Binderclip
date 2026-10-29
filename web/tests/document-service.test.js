@@ -22,13 +22,14 @@ function fixture(options={}){
    if(args.p_action==='document.get')return respond(options.manifest||manifest);
    if(args.p_action==='document.claim'){manifest={...manifest,sha256:args.p_data.sha256,...(options.drive?{external_id:manifest.external_id||args.p_data.external_id,parent_id:'job-folder-123'}:{})};return respond(manifest);}
    if(args.p_action==='document.verified')return respond({});
-   if(args.p_action==='connection.get')return respond(options.drive?{status:'Ready',root_id:'root-private-123',credentials:{refresh_token:'PRIVATE-REFRESH',access_token:'PRIVATE-ACCESS',expires_at:'2099-01-01T00:00:00Z'}}:{status:'Unconfigured'});
+   if(args.p_action==='connection.get')return respond(options.drive?{status:'Ready',root_id:'root-private-123',credentials:{...(options.missingRefresh?{}:{refresh_token:'PRIVATE-REFRESH'}),access_token:'PRIVATE-ACCESS',expires_at:options.expired?'2020-01-01T00:00:00Z':'2099-01-01T00:00:00Z'}}:{status:'Unconfigured'});
+   if(args.p_action==='connection.error')return respond({});
    if(args.p_action==='folder.claim')return respond({external_id:'job-folder-123',parent_id:'root-private-123'});
    if(args.p_action==='state.create')return respond({});
    if(args.p_action==='state.consume')return respond({verifier:'v'.repeat(43)});
    throw Error('Unexpected broker '+args.p_action);
   }
-  if(url==='https://oauth2.googleapis.com/token')return options.tokenError?respond({error:options.tokenError,error_description:'PRIVATE-DIAGNOSTIC-DO-NOT-RETURN'},400):respond({access_token:'PRIVATE-OWNER-ACCESS',refresh_token:'PRIVATE-OWNER-REFRESH',expires_in:3600,scope:'openid email https://www.googleapis.com/auth/drive.file'});
+  if(url==='https://oauth2.googleapis.com/token')return options.tokenError?respond({error:options.tokenError,error_description:'PRIVATE-DIAGNOSTIC-DO-NOT-RETURN'},options.tokenError==='server_error'?500:400):respond({access_token:'PRIVATE-OWNER-ACCESS',refresh_token:'PRIVATE-OWNER-REFRESH',expires_in:3600,scope:'openid email https://www.googleapis.com/auth/drive.file'});
   if(url==='https://openidconnect.googleapis.com/v1/userinfo')return respond({email:'wrong-owner@example.test',email_verified:true,sub:'wrong-owner'});
   if(url.startsWith('https://www.googleapis.com/')){
    assert.equal(init.headers.Authorization,'Bearer PRIVATE-ACCESS');
@@ -109,4 +110,14 @@ test('OAuth exchange errors report safe categories without provider diagnostics'
   if(reason==='invalid_client')assert.match(text,/Client Secret/);
   if(reason==='invalid_grant')assert.match(text,/expired or was already used/);
  }
+});
+test('transient refresh failures do not permanently disconnect storage',async()=>{
+ const transient=fixture({drive:true,expired:true,tokenError:'server_error'}),invalid=fixture({drive:true,expired:true,tokenError:'invalid_grant'});
+ assert.equal((await transient.upload()).status,503);assert.ok(!transient.calls.some(c=>c.url.endsWith('bc_document_service')&&JSON.parse(c.init.body).p_action==='connection.error'));
+ assert.equal((await invalid.upload()).status,503);assert.ok(invalid.calls.some(c=>c.url.endsWith('bc_document_service')&&JSON.parse(c.init.body).p_action==='connection.error'));
+});
+test('owner recovery opens only for a broken connection or deliberate backend reopening',async()=>{
+ const healthy=fixture({drive:true}),broken=fixture({drive:true,missingRefresh:true});
+ assert.equal((await healthy.handler(new Request(base+'/owner/connect'))).status,403);
+ assert.equal((await broken.handler(new Request(base+'/owner/connect'))).status,303);
 });
