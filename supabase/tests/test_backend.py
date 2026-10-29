@@ -130,7 +130,7 @@ class BackendTests(unittest.TestCase):
         source=(ROOT/'supabase/audits/integrity.sql').read_text(encoding='utf-8')
         query=source[source.index('with checks'):source.rindex('commit;')]
         rows=self.conn.execute(query).fetchall()
-        self.assertEqual(len(rows),24)
+        self.assertEqual(len(rows),25)
         self.assertEqual([(name,count) for name,count in rows if count],[])
         self.client()
 
@@ -192,6 +192,9 @@ class BackendTests(unittest.TestCase):
         self.practical('costsheet.book_match',{'job_id':job})
         detail=self.costsheet('detail',{'job_id':job})
         self.assertEqual(detail['figures']['actual_buy'],'1260.00');self.assertEqual(detail['figures']['margin'],'240.00')
+        from decimal import Decimal
+        buy_ids={x['id'] for x in detail['lines'] if x['side']=='BUY'}
+        self.assertEqual(sum(Decimal(x['actual_base']) for x in detail['line_values'] if x['id'] in buy_ids),Decimal('1260.00'))
         self.command('cost.approve',{'id':job});invoice=self.command('invoice.generate',{'job_ids':[job]})['id']
         self.command('invoice.approve',{'id':invoice});self.command('invoice.issue',{'id':invoice})
         self.assertEqual(self.read('invoice',invoice)['tax_total'],'0.00')
@@ -271,6 +274,9 @@ class BackendTests(unittest.TestCase):
         self.practical('invoice.save',{'id':invoice,'lines':lines,'discount':'100','adjustment':'20','reason':'Agreed billing','invoice_date':'2026-10-27','due_date':'2026-11-27'})
         inv=self.read('invoice',invoice);self.assertEqual(inv['subtotal'],'1420.00');self.assertEqual(inv['tax_total'],'71.00');self.assertEqual(inv['total'],'1491.00')
         self.assertEqual(self.costsheet('detail',{'job_id':job})['figures']['margin'],'220.00')
+        from decimal import Decimal
+        detail=self.costsheet('detail',{'job_id':job});sell_ids={x['id'] for x in detail['lines'] if x['side']=='SELL'}
+        self.assertEqual(sum(Decimal(x['actual_base']) for x in detail['line_values'] if x['id'] in sell_ids),Decimal('1420.00'))
         self.command('invoice.approve',{'id':invoice});self.command('invoice.issue',{'id':invoice})
         self.command('invoice.receipt',{'id':invoice,'reference':'PRACTICAL-BANK','amount':'491','received_on':'2026-10-28'})
         statement=self.practical('statement',{'customer_id':customer})

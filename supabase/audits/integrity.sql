@@ -46,6 +46,9 @@ with checks(check_name,exceptions) as (
  union all select 'Invoice original charges differ from stored items',count(*) from binderclip.invoices i where i.charges_subtotal is not null and i.charges_subtotal<>coalesce((select sum(round(x.quantity*x.unit_rate,2)) from binderclip.invoice_items x where x.invoice_id=i.id),0)
  union all select 'Supplier overpayments',count(*) from binderclip.supplier_bills b
  where coalesce((select sum(p.amount) from binderclip.supplier_payments p where p.bill_id=b.id),0)>round(b.quantity*b.unit_rate,2)+b.tax_amount
+ union all select 'Supplier VAT accounting classification differs from snapshot',count(*) from binderclip.supplier_bills b
+ where b.status='Matched' and round(b.tax_amount*b.fx_rate,2)<>
+ coalesce((select sum(l.debit-l.credit) from binderclip.journals e join binderclip.journal_lines l on l.entry_id=e.id where e.tenant_id=b.tenant_id and e.source='input-tax:'||b.id and l.account=case when b.vat_recoverable then '1200 VAT recoverable' else '5000 Direct costs' end),0)
  union all select 'Matched supplier bill payable differs from journal',count(*) from binderclip.supplier_bills b
  where b.status='Matched' and binderclip.base(b.quantity,b.unit_rate,b.fx_rate)+round(b.tax_amount*b.fx_rate,2)<>
  coalesce((select sum(l.credit-l.debit) from binderclip.journals e join binderclip.journal_lines l on l.entry_id=e.id where e.tenant_id=b.tenant_id and e.source in('bill:'||b.id,'input-tax:'||b.id) and l.account='2100 Payables'),0)
