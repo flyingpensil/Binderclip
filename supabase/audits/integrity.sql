@@ -2,6 +2,17 @@
 -- are returned: each row is a count requiring investigation, not an auto-repair.
 begin transaction read only;
 with checks(check_name,exceptions) as (
+ select 'Non-finite stored financial numbers',count(*) from (
+  select jsonb_build_array(quantity,unit_rate,fx_rate,tax_rate)::text v from binderclip.cost_lines
+  union all select jsonb_build_array(quantity,unit_rate,fx_rate,variance,tax_amount)::text from binderclip.supplier_bills
+  union all select jsonb_build_array(subtotal,tax_total,total,paid,fx_rate,discount,adjustment)::text from binderclip.invoices
+  union all select jsonb_build_array(quantity,unit_rate,tax_rate,net,tax)::text from binderclip.invoice_items
+  union all select jsonb_build_array(quantity,unit_rate,tax_rate)::text from binderclip.purchase_items
+  union all select jsonb_build_array(amount)::text from binderclip.receipts
+  union all select jsonb_build_array(amount)::text from binderclip.supplier_payments
+  union all select jsonb_build_array(debit,credit)::text from binderclip.journal_lines
+ ) values_to_check where v ~ '(NaN|Infinity)'
+ union all
  select 'Unbalanced or empty journals',count(*) from (
   select e.id from binderclip.journals e left join binderclip.journal_lines l on l.entry_id=e.id
   group by e.id having count(l.id)<2 or coalesce(sum(l.debit-l.credit),0)<>0

@@ -1,5 +1,7 @@
 # Client handover review — 27 October 2026
 
+This is a historical review. See the [29 October review](professional-readiness-audit-2026-10-29.md) for later fixes and current boundaries.
+
 This review covers the GitHub Pages/Supabase freight workflow, entry attribution, navigation and data-access boundary. It is a targeted code and regression review, not an independent penetration test or a guarantee that every possible defect has been found.
 
 ## Changes and corrections

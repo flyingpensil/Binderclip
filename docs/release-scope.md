@@ -1,6 +1,8 @@
-# Initial release scope and remaining work
+# Historical Django foundation scope
 
-This repository implements a working foundation and the immediate schema/scaffolding request. It is intentionally explicit about what remains before it can carry live accounting obligations.
+This document describes the original Django foundation, not the current Supabase application. For the current audit, see [Professional readiness review](professional-readiness-audit-2026-10-29.md). Some items below have since shipped in Supabase.
+
+The original repository implemented a working foundation and the immediate schema/scaffolding request. It is intentionally explicit about what remains before it can carry live accounting obligations.
 
 | Area | Implemented | Remaining for a fuller release |
 |---|---|---|

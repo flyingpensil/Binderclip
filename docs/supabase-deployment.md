@@ -26,7 +26,7 @@ After these upgrades pass their live installation checks, set `"features": {"fre
 
 Upgrade 008 adds the dedicated [cost-sheet workbench](cost-sheets.md). After installation enable `features.costSheets` alongside `features.freight`. It introduces scoped charge correction history and separate edit/disapprove/apply/print grants, without modifying posted journal history.
 
-All business tables are in the private `binderclip` schema, with RLS enabled and no direct anonymous/authenticated grants. Only three authenticated RPCs are public: `bc_session`, `bc_read`, `bc_command`. Each checks verified Google identity, active session, company membership and process/data scope. Dashboard totals and exports respect their own grants. Roles combine positive grants; no grant means no access. Scoped report export additionally requires `can_export`.
+All business tables are in the private `binderclip` schema, with RLS enabled and no direct anonymous/authenticated grants. Authenticated public RPCs include `bc_session`, `bc_read`, `bc_command`, the freight/cost-sheet/billing/practical report endpoints, `bc_rates`, `bc_activity`, and private-document controls. Each checks verified Google identity, active session, company membership and process/data scope. Dashboard totals and exports respect their own grants. Roles combine positive grants; no grant means no access. Scoped report export additionally requires `can_export`.
 
 ## Google authentication
 
@@ -58,3 +58,11 @@ This is the implemented ERP foundation for evaluation, not a claim of tier-1 acc
 List screens show up to 500 matching records and disclose the limit; narrow the search. Configure a separate test environment for test transactions. Free-tier quotas, inactivity pauses and backup availability are provider-controlled. Arrange off-platform database backups and verify restore procedures before relying on this for real accounting. Review current plan limits in the Supabase dashboard; no paid upgrade is part of this setup.
 
 Run `npm test` for browser decimal/export/config checks. The Supabase CI job applies the schema to disposable PostgreSQL with a modeled Auth boundary and tests accounting and authorization. These tests do not replace an actual Google OAuth sign-in and cross-user browser check.
+
+## Current upgrades and commercial launch
+
+Install migrations 010–020 in numerical order after the earlier migrations. Never rerun the initial schema against an existing project. Test migrations first against a disposable database. Migrations 017–020 strengthen decimal validation, Dubai date cutoffs and invoice adjustment allocation without rewriting existing business rows or granting browser access to private tables.
+
+The read-only [integrity audit](../supabase/audits/integrity.sql) reconciles 24 structural/accounting controls. It is not a substitute for checking external source invoices, bank statements, VAT eligibility or backup restoration.
+
+GitHub Pages is the existing evaluation deployment. Before selling subscriptions, move the frontend to a host suitable for commercial SaaS; see the [production roadmap](production-roadmap.md). No paid plan, Drive connector, billing provider or domain purchase is activated by these upgrades.

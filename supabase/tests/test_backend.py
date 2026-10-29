@@ -118,6 +118,11 @@ class BackendTests(unittest.TestCase):
         # The 22:00 UTC posting belongs to the next Dubai date.
         prior=self.conn.execute("select public.bc_report(%s,'trial_balance',%s)",(self.tenant,previous)).fetchone()[0]
         self.assertFalse(any(row['account']=='2100 Payables' for row in prior['rows']))
+        self.owner();self.conn.execute("set local session_replication_role='replica'")
+        self.conn.execute("update binderclip.journals set created_at=now()-interval '3 days' where source=%s",('bill:'+bill,))
+        self.conn.execute("set local session_replication_role='origin'");self.client()
+        historical=self.conn.execute("select public.bc_report(%s,'payables',%s)",(self.tenant,previous)).fetchone()[0]
+        self.assertEqual(historical['rows'][0]['outstanding'],'1000.00')
 
     def test_read_only_integrity_audit_accepts_a_complete_posted_flow(self):
         self.issued()
@@ -125,7 +130,7 @@ class BackendTests(unittest.TestCase):
         source=(ROOT/'supabase/audits/integrity.sql').read_text(encoding='utf-8')
         query=source[source.index('with checks'):source.rindex('commit;')]
         rows=self.conn.execute(query).fetchall()
-        self.assertEqual(len(rows),23)
+        self.assertEqual(len(rows),24)
         self.assertEqual([(name,count) for name,count in rows if count],[])
         self.client()
 
