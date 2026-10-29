@@ -7,7 +7,7 @@ const names={job:'Shipment',costsheet:'Cost sheet',invoice:'Customer invoice',qu
 const groups={
  job:[['Details',/Shipment details/],['Operations',/Shipment timeline|Tasks & stage|Required stage/],['Financials',/cost sheet|Customer invoices/i],['Attachments',/documents|Attachments/i],['History',/Job activity/]],
  costsheet:[['Supplier invoices',/Select supplier invoices|Supplier invoice documents/],['Supplier costs',/^Supplier costs/],['Customer charges',/^Customer charges/],['Reconciliation',/Supplier invoice review/],['Customer invoices',/Final customer invoices/],['Attachments',/Attachments/],['History',/correction history/i]],
- invoice:[['Lines',/^Invoice lines$/],['Payments',/^Payments/],['Attachments',/Attachments/],['Billing details',/^Billing details/]],
+ invoice:[['Lines',/^Invoice lines$/],['Totals & tax',/^Totals & tax$/],['Payments',/^Payments/],['Attachments',/Attachments/],['Billing details',/^Billing details/]],
  quote:[['Lines',/^Quotation lines$/],['Internal costs',/Internal buy/],['Related job',/Converted job/],['Attachments',/Attachments/],['Terms',/^Quotation terms/],['Billing details',/^Billing details/]],
  purchase:[['Lines',/Supplier invoice lines/],['Attachments',/Attachments/]]
 };
@@ -18,19 +18,19 @@ function facts(page,r){
  if(page==='quote')return [['Customer',r.customer_name],['Origin',r.data?.pol],['Destination',r.data?.pod],['Valid until',r.valid_until],['Mode',r.data?.mode],['Client reference',r.data?.client_reference]];
  return [['Supplier',r.supplier_name],['Vendor reference',r.reference],['Job',r.job_number],['Invoice date',r.invoice_date],['Due date',r.due_date],['Exchange rate',r.fx_rate]];
 }
-function summary(page,r,asOf){let status=r.status;if(page==='costsheet')status=r.locked_at?'Locked':r.approved?'Approved':'Open';if(page==='invoice'&&asOf)status=displayStatus(r,asOf);if(page==='quote'&&asOf&&['Draft','Approved'].includes(status)&&r.valid_until<asOf)status='Expired';const items=[['Document',r.costsheet_number||r.number],['Status',status],['Currency',r.base_currency||r.currency]];if(page==='costsheet')items.push(['Job status',r.status]);if(page==='invoice')items.push(['Total',money(r.total)],['Paid',money(r.paid)]);if(page==='purchase')items.push(['Net',money(r.net)],['VAT',money(r.vat)]);return items.filter(([,v])=>v!==undefined&&v!==null&&v!=='').map(([k,v])=>`<span class="record-chip"><span>${h(k)}</span><strong>${h(v)}</strong></span>`).join('');}
+function summary(page,r,asOf,baseCurrency){let status=r.status;if(page==='costsheet')status=r.locked_at?'Locked':r.approved?'Approved':'Open';if(page==='invoice'&&asOf)status=displayStatus(r,asOf);if(page==='quote'&&asOf&&['Draft','Approved'].includes(status)&&r.valid_until<asOf)status='Expired';const items=[['Document',r.costsheet_number||r.number],['Status',status],[['job','costsheet'].includes(page)?'Base currency':'Currency',r.base_currency||r.currency||baseCurrency]];if(page==='costsheet')items.push(['Job status',r.status]);if(page==='invoice'){if(r.subtotal!==undefined)items.push(['Net',money(r.subtotal)],['VAT',money(r.tax_total)]);items.push(['Total',money(r.total)],['Paid',money(r.paid)]);}if(page==='purchase')items.push(['Net',money(r.net)],['VAT',money(r.vat)]);return items.filter(([,v])=>v!==undefined&&v!==null&&v!=='').map(([k,v])=>`<span class="record-chip"><span>${h(k)}</span><strong>${h(v)}</strong></span>`).join('');}
 export function rememberRecordView(root){const items=root.matches?.('[data-record-key]')?root:root.querySelector('[data-record-key]');if(!items)return;const panel=items.querySelector('[role=tabpanel]:not([hidden])');if(panel)positions.set(items.dataset.recordKey+'/'+panel.dataset.recordPanel,{top:panel.scrollTop,tables:[...panel.querySelectorAll('.table-wrap')].map(t=>[t.scrollTop,t.scrollLeft])});}
 function choose(root,key,focus=false){const buttons=[...root.querySelectorAll('[role=tab]')];if(!buttons.some(b=>b.dataset.recordTab===key))key=buttons[0]?.dataset.recordTab;for(const b of buttons){const active=b.dataset.recordTab===key;b.setAttribute('aria-selected',String(active));b.tabIndex=active?0:-1;const panel=root.querySelector('#'+b.getAttribute('aria-controls'));panel.hidden=!active;if(active){const saved=positions.get(root.dataset.recordKey+'/'+key);if(saved){panel.scrollTop=saved.top;[...panel.querySelectorAll('.table-wrap')].forEach((t,i)=>{t.scrollTop=saved.tables[i]?.[0]||0;t.scrollLeft=saved.tables[i]?.[1]||0;});}if(focus)b.focus();}}if(key)selections.set(root.dataset.recordKey,key);}
 
 // Reparent existing sections: delegated actions, forms and record state stay intact.
-export function arrangeRecord(root,{page,id,company,snapshot,asOf}){
+export function arrangeRecord(root,{page,id,company,snapshot,asOf,baseCurrency}){
  root.classList.add('compact-workspace');
  root.classList.remove('record-workspace');
  if(!recordPages.has(page))return;
  const r=snapshot?.row||{},heading=root.querySelector('.page-heading');if(!heading)return;
  root.classList.add('record-workspace');const key=`${company}/${page}/${id}`;
  const header=document.createElement('section');header.className='record-header';header.setAttribute('aria-label',names[page]+' header');heading.before(header);header.append(heading);
- const chips=document.createElement('div');chips.className='record-chips';chips.innerHTML=summary(page,r,asOf);header.append(chips);
+ const chips=document.createElement('div');chips.className='record-chips';chips.innerHTML=summary(page,r,asOf,baseCurrency);header.append(chips);
  const grid=document.createElement('dl');grid.className='record-facts';grid.innerHTML=facts(page,r).map(([label,value])=>`<div><dt>${h(label)}</dt><dd>${h(Array.isArray(value)?value.join(', '):value||'—')}</dd></div>`).join('');header.append(grid);
  const route=root.querySelector(':scope > .job-route');if(route)header.append(route);
  const tabRoot=document.createElement('section');tabRoot.className='record-items';tabRoot.dataset.recordKey=key;tabRoot.setAttribute('aria-label',names[page]+' items');
@@ -39,6 +39,7 @@ export function arrangeRecord(root,{page,id,company,snapshot,asOf}){
  if(['invoice','quote'].includes(page)){
   const paper=root.querySelector(':scope > .invoice-paper'),identity=paper?[...paper.children].filter(n=>n.matches('.invoice-top,.bill-to')):[];
   if(identity.length){const details=document.createElement('section');details.className='panel';details.innerHTML='<div class="panel-heading"><h2>Billing details</h2></div>';details.append(...identity);root.append(details);}
+  if(page==='invoice'&&paper){const totals=paper.querySelector('.invoice-totals');if(totals){const section=document.createElement('section');section.className='panel';section.innerHTML='<div class="panel-heading"><h2>Totals &amp; tax</h2></div>';section.append(totals);root.append(section);}}
   if(page==='quote'&&paper){const terms=[...paper.children].find(n=>n.matches('.activity-list')&&n.querySelector('h3'));if(terms){const section=document.createElement('section');section.className='panel';section.innerHTML='<div class="panel-heading"><h2>Quotation terms</h2></div>';section.append(terms);root.append(section);}}
  }
  const list=document.createElement('div');list.className='record-tabs';list.setAttribute('role','tablist');list.setAttribute('aria-label','Document sections');tabRoot.append(list);

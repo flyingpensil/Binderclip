@@ -746,6 +746,7 @@ class BackendTests(unittest.TestCase):
         self.assertEqual(self.attachments('purchase',purchases[1]),[])
         self.assertEqual(self.workspace('job_workspace',job)['documents'],[])
         self.owner();self.conn.execute("update binderclip.job_documents set status='Ready' where id=%s",(doc,));self.client()
+        self.practical('costsheet.import',{'job_id':job,'invoice_ids':purchases})
         self.command('cost.add',{'job_id':job,'side':'BUY','service':'Estimated freight','supplier_id':suppliers[0],'quantity':'1','unit_rate':'10','currency':'AED','fx_rate':'1'})
         self.command('cost.add',{'job_id':job,'side':'SELL','service':'Freight charge','quantity':'1','unit_rate':'20','currency':'AED','fx_rate':'1','tax_rate':'5'})
         self.workflow('document.require',{'job_id':job,'kind':'BL','required_before':'Booked'})
