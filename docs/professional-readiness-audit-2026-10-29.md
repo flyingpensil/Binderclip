@@ -4,7 +4,7 @@ Binderclip is the software name. Each tenant's legal business name belongs in Co
 
 ## Live data review
 
-Read-only checks ran against the production Supabase project. The first 22 controls returned zero exceptions. The inspected dataset at 11:10 GST contained 2 jobs, 1 customer invoice (issued), 3 matched supplier bill lines, 1 receipt, 2 supplier payments, 13 journals and 0 ready attachments. Two additional checks cover negative invoice net/VAT lines and non-finite financial values. After migrations 017–021 were installed, all **24 checks returned zero exceptions** at **11:20 GST**. No stored data required repair.
+Read-only checks ran against the production Supabase project. The first 22 controls returned zero exceptions. The inspected dataset at 11:10 GST contained 2 jobs, 1 customer invoice (issued), 3 matched supplier bill lines, 1 receipt, 2 supplier payments, 13 journals and 0 ready attachments. Two additional checks cover negative invoice net/VAT lines and non-finite financial values. After migrations 017–020 were installed, all **24 checks returned zero exceptions** at **11:20 GST**. No stored data required repair.
 
 The versioned [audit SQL](../supabase/audits/integrity.sql) runs in a read-only transaction and returns exception counts without client names, document numbers or transaction amounts. It checks:
 
