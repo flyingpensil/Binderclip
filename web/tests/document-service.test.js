@@ -25,8 +25,11 @@ function fixture(options={}){
    if(args.p_action==='connection.get')return respond(options.drive?{status:'Ready',root_id:'root-private-123',credentials:{refresh_token:'PRIVATE-REFRESH',access_token:'PRIVATE-ACCESS',expires_at:'2099-01-01T00:00:00Z'}}:{status:'Unconfigured'});
    if(args.p_action==='folder.claim')return respond({external_id:'job-folder-123',parent_id:'root-private-123'});
    if(args.p_action==='state.create')return respond({});
+   if(args.p_action==='state.consume')return respond({verifier:'v'.repeat(43)});
    throw Error('Unexpected broker '+args.p_action);
   }
+  if(url==='https://oauth2.googleapis.com/token')return respond({access_token:'PRIVATE-OWNER-ACCESS',refresh_token:'PRIVATE-OWNER-REFRESH',expires_in:3600,scope:'openid email https://www.googleapis.com/auth/drive.file'});
+  if(url==='https://openidconnect.googleapis.com/v1/userinfo')return respond({email:'wrong-owner@example.test',email_verified:true,sub:'wrong-owner'});
   if(url.startsWith('https://www.googleapis.com/')){
    assert.equal(init.headers.Authorization,'Bearer PRIVATE-ACCESS');
    if(url.includes('generateIds'))return respond({ids:['generated-file-'+(++sequence)]});
@@ -89,4 +92,11 @@ test('Drive retry after a lost upload response reuses the claimed remote file',a
  const retry=await f.upload();assert.equal(retry.status,200);assert.ok(!JSON.stringify(await retry.json()).includes('generated-file'));
  assert.equal(f.calls.filter(c=>c.url.includes('/upload/drive/')).length,1);
  assert.equal(f.calls.filter(c=>c.url.endsWith('bc_document_finish')).length,1);
+});
+test('owner callback rejects a different verified Google account before saving credentials',async()=>{
+ const f=fixture(),start=await f.handler(new Request(base+'/owner/connect'));
+ const state=new URL(start.headers.get('Location')).searchParams.get('state');
+ const response=await f.handler(new Request(base+'/owner/callback?state='+state+'&code=private-code',{headers:{Cookie:'bc_drive_setup='+state}}));
+ assert.equal(response.status,403);assert.match((await response.json()).error,/designated owner/);
+ assert.ok(!f.calls.some(c=>c.url.endsWith('bc_document_service')&&JSON.parse(c.init.body).p_action==='connection.save'));
 });
