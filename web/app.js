@@ -1,5 +1,5 @@
 import {createExchangeUI} from './exchange.js';
-import {multiPicker,enhancePickers} from './pickers.js';
+import {multiPicker,enhancePickers,syncPickerValues} from './pickers.js';
 import {createIdleSession} from './idle.js';
 import {createPracticalUI} from './practical.js';
 import {createBillingUI} from './billing.js';
@@ -124,7 +124,7 @@ const costSheets=createCostSheetUI({practical,state,rpc,read,can,button,link,hea
 const freight=createFreightUI({state,rpc,read,can,button,link,heading,panel,table,badge,edit,render,message,today,download});
 
 document.addEventListener('click',async event=>{const el=event.target.closest('[data-do]');if(!el||state.busy)return;state.busy=true;el.disabled=true;try{await clickAction(el);}catch(error){fail(error);}finally{state.busy=false;if(el.isConnected)el.disabled=false;}});
-async function syncSharedRate(form){if(!state.edit||!form.elements.currency||!form.elements.fx_rate)return;const entry=state.edit,currency=form.elements.currency.value,initial=entry.initial||{},submit=form.querySelector('[type=submit]');form.elements.fx_rate.readOnly=true;
+async function syncSharedRate(form){syncPickerValues(form);if(!state.edit||!form.elements.currency||!form.elements.fx_rate)return;const entry=state.edit,currency=form.elements.currency.value,initial=entry.initial||{},submit=form.querySelector('[type=submit]');form.elements.fx_rate.readOnly=true;
  if(initial.id&&initial.currency===currency&&initial.fx_rate){entry.rateRequest=(entry.rateRequest||0)+1;form.elements.fx_rate.value=initial.fx_rate;submit.disabled=false;return;}
  const seq=(entry.rateRequest||0)+1;entry.rateRequest=seq;submit.disabled=true;
  try{const q=await exchange.quote(currency,state.member.company.currency);if(state.edit!==entry||entry.rateRequest!==seq)return;form.elements.fx_rate.value=q.rate;$('form-error').hidden=true;submit.disabled=false;}

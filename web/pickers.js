@@ -18,4 +18,6 @@ document.addEventListener('input',event=>{if(!event.target.matches('[data-multi-
 document.addEventListener('change',event=>{const picker=event.target.closest('[data-multi-picker]');if(picker)picker.querySelector('[data-selection-count]').textContent=`${picker.querySelectorAll('input[type=checkbox]:checked').length} selected`;});
 
 document.addEventListener('click',event=>{for(const picker of document.querySelectorAll('.multi-picker[open],.select-picker[open]'))if(!picker.contains(event.target))picker.open=false;});
-document.addEventListener('keydown',event=>{if(event.key!=='Escape')return;const picker=event.target.closest('.multi-picker[open],.select-picker[open]');if(picker){event.preventDefault();picker.open=false;picker.querySelector('summary').focus();}});
+document.addEventListener('keydown',event=>{if(event.target.matches('.picker-search')&&event.key==='Enter'){event.preventDefault();return;}if(event.key!=='Escape')return;const picker=event.target.closest('.multi-picker[open],.select-picker[open]');if(picker){event.preventDefault();picker.open=false;picker.querySelector('summary').focus();}});
+
+export function syncPickerValues(root){for(const select of root.querySelectorAll('select[data-enhanced]')){const summary=select.closest('.select-picker')?.querySelector('summary');if(summary)summary.textContent=select.selectedOptions[0]?.textContent||'Choose an option';}}
