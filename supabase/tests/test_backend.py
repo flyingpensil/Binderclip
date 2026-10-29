@@ -149,7 +149,7 @@ class BackendTests(unittest.TestCase):
         customer,supplier,job,buy=self.fixtures()
         self.command('job.book',{'id':job});self.bill(supplier,job,buy)
         self.command('cost.approve',{'id':job})
-        invoice=self.command('invoice.generate',{'job_ids':[job]})['id']
+        invoice=self.conn.execute('select public.bc_billing(%s,%s,%s)',(self.tenant,'invoice.create',Jsonb({'job_ids':[job],'invoice_date':'2026-10-27','due_date':'2026-11-27'}))).fetchone()[0]['id']
         return job,invoice
     def issued(self):
         job,invoice=self.ready();self.command('invoice.approve',{'id':invoice});self.command('invoice.issue',{'id':invoice});return job,invoice
@@ -193,7 +193,7 @@ class BackendTests(unittest.TestCase):
         self.command('cost.approve',{'id':job});invoice=self.command('invoice.generate',{'job_ids':[job]})['id']
         before=self.read('invoice',invoice)
         lines=[{'id':x['id'],'description':x['description'],'comments':'Client agreed','unit':'shipment','quantity':x['quantity'],'unit_rate':'600' if x['quantity']=='2.000' else '300','tax_rate':'5'} for x in before['items']]
-        self.practical('invoice.save',{'id':invoice,'lines':lines,'discount':'100','adjustment':'20','reason':'Agreed billing'})
+        self.practical('invoice.save',{'id':invoice,'lines':lines,'discount':'100','adjustment':'20','reason':'Agreed billing','invoice_date':'2026-10-27','due_date':'2026-11-27'})
         inv=self.read('invoice',invoice);self.assertEqual(inv['subtotal'],'1420.00');self.assertEqual(inv['tax_total'],'71.00');self.assertEqual(inv['total'],'1491.00')
         self.assertEqual(self.costsheet('detail',{'job_id':job})['figures']['margin'],'220.00')
         self.command('invoice.approve',{'id':invoice});self.command('invoice.issue',{'id':invoice})
