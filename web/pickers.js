@@ -11,8 +11,11 @@ export function enhancePickers(root){
   search.addEventListener('input',()=>{for(const option of select.options)option.hidden=!wildcardMatch(option.textContent,search.value);});
   select.addEventListener('change',()=>{summary.textContent=select.selectedOptions[0]?.textContent||'Choose an option';details.open=false;});
   select.addEventListener('invalid',()=>{details.open=true;});
-  details.addEventListener('toggle',()=>{if(details.open){search.value='';for(const option of select.options)option.hidden=false;search.focus();}});
+  details.addEventListener('toggle',()=>{summary.textContent=select.selectedOptions[0]?.textContent||'Choose an option';if(details.open){search.value='';for(const option of select.options)option.hidden=false;search.focus();}});
  }
 }
 document.addEventListener('input',event=>{if(!event.target.matches('[data-multi-picker] .picker-search'))return;const picker=event.target.closest('[data-multi-picker]');let matches=0;for(const option of picker.querySelectorAll('.picker-option')){option.hidden=!wildcardMatch(option.textContent,event.target.value);if(!option.hidden)matches++;}picker.querySelector('.picker-empty').hidden=matches>0;});
 document.addEventListener('change',event=>{const picker=event.target.closest('[data-multi-picker]');if(picker)picker.querySelector('[data-selection-count]').textContent=`${picker.querySelectorAll('input[type=checkbox]:checked').length} selected`;});
+
+document.addEventListener('click',event=>{for(const picker of document.querySelectorAll('.multi-picker[open],.select-picker[open]'))if(!picker.contains(event.target))picker.open=false;});
+document.addEventListener('keydown',event=>{if(event.key!=='Escape')return;const picker=event.target.closest('.multi-picker[open],.select-picker[open]');if(picker){event.preventDefault();picker.open=false;picker.querySelector('summary').focus();}});
