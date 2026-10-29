@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {scaled, decimal, money, balance, lineAmount, permitted, csv, validateConfig, escapeHTML} from '../domain.js';
+import {businessDate, scaled, decimal, money, balance, lineAmount, permitted, csv, validateConfig, escapeHTML} from '../domain.js';
 
 test('money stays exact above JavaScript safe integer and rounds half away from zero',()=>{
   assert.equal(money('9007199254740993.015'),'9,007,199,254,740,993.02');
@@ -22,3 +22,5 @@ test('website config rejects service credentials and unrelated endpoints',()=>{
   assert.equal(validateConfig(cfg).url,cfg.url);
   for(const value of [{...cfg,publishableKey:'sb_secret_no'},{...cfg,publishableKey:'eyJhbGciOi'},{...cfg,url:'https://supabase.co.evil.test'}, {...cfg,url:'http://project.supabase.co'}, {...cfg,url:'https://project.supabase.co/path'}])assert.throws(()=>validateConfig(value));
 });
+
+test('business dates follow Dubai across UTC midnight boundaries',()=>{assert.equal(businessDate(new Date('2026-10-29T21:30:00Z')),'2026-10-30');});

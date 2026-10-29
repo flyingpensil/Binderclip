@@ -15,6 +15,7 @@ with checks(check_name,exceptions) as (
  union all select 'Invoice payment status inconsistent',count(*) from binderclip.invoices i
  where (i.status='Paid' and i.paid<>i.total) or (i.status='Issued' and i.paid<>0)
  or (i.status='Partially Paid' and not(i.paid>0 and i.paid<i.total))
+ union all select 'Negative invoice net or VAT lines',count(*) from binderclip.invoice_items where net<0 or tax<0
  union all select 'Invoice item arithmetic differs',count(*) from binderclip.invoice_items x
  where x.net<>round(x.quantity*x.unit_rate,2)-x.discount_share+x.adjustment_share
  or x.tax<>round(x.net*x.tax_rate/100,2)

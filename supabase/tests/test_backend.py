@@ -125,9 +125,16 @@ class BackendTests(unittest.TestCase):
         source=(ROOT/'supabase/audits/integrity.sql').read_text(encoding='utf-8')
         query=source[source.index('with checks'):source.rindex('commit;')]
         rows=self.conn.execute(query).fetchall()
-        self.assertEqual(len(rows),22)
+        self.assertEqual(len(rows),23)
         self.assertEqual([(name,count) for name,count in rows if count],[])
         self.client()
+
+    def test_negative_invoice_adjustment_does_not_create_credit_lines(self):
+        job,invoice=self.ready();original=self.read('invoice',invoice)['items'][0]
+        line={'id':original['id'],'description':'Tiny fee','quantity':'1','unit_rate':'0.01','tax_rate':'100','exemption':''}
+        self.practical('invoice.save',{'id':invoice,'reason':'Allocation edge case','discount':'.01','adjustment':'-.01','lines':[line,{'job_id':job,'description':'Zero tax fee','quantity':'1','unit_rate':'.01','tax_rate':'0','exemption':'Training exempt'}]})
+        result=self.read('invoice',invoice)
+        self.assertEqual(result['total'],'0.00');self.assertTrue(all(x['net']=='0.00' and x['tax']=='0.00' for x in result['items']))
 
     def fixtures(self):
         customer=self.command('master.save',{'kind':'customers','code':'C1','name':'Customer','currency':'AED','data':{'credit_days':'30'}})['id']

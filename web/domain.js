@@ -21,7 +21,8 @@ export function lineAmount(line) {
   const product=scaled(line.quantity,3)*scaled(line.unit_rate,2);
   return decimal((product+500n)/1000n);
 }
-export function displayStatus(invoice,today=new Date().toISOString().slice(0,10)) {
+export const businessDate=(date=new Date())=>date.toLocaleDateString('en-CA',{timeZone:'Asia/Dubai'});
+export function displayStatus(invoice,today=businessDate()) {
   return ['Issued','Partially Paid'].includes(invoice.status)&&invoice.due_date<today?'Overdue':invoice.status;
 }
 export function permitted(grants,path,action='R') {
