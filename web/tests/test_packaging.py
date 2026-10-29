@@ -18,6 +18,9 @@ class PackagingTests(unittest.TestCase):
             html=(root/'index.html').read_text(encoding='utf-8')
             self.assertNotIn('__CSP__',html)
             self.assertIn("connect-src 'self' https://example.supabase.co",html)
+            self.assertRegex(html, r'assets/app\.js\?v=[a-f0-9]{12}')
+            script=(root/'assets/app.js').read_text(encoding='utf-8')
+            self.assertRegex(script, r"record-layout\.js\?v=[a-f0-9]{12}")
 
     def test_secret_keys_and_credential_urls_cannot_be_published(self):
         for url,key in [('https://a.supabase.co','sb_secret_bad'),('https://user:password@a.supabase.co','sb_publishable_test'),('https://a.supabase.co.evil.test','sb_publishable_test')]:

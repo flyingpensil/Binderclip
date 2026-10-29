@@ -1,5 +1,6 @@
 """Package only public portal assets. No ERP source, user data or credentials."""
 import json
+import hashlib
 import os
 import shutil
 from pathlib import Path
@@ -35,8 +36,21 @@ def build(output=None, config=None):
         for name in ('app.css', 'favicon.svg'):
             shutil.copyfile(ROOT / 'static' / name, assets / name)
         shutil.copytree(ROOT / 'web/vendor', output / 'vendor', dirs_exist_ok=True)
+        # A single content version prevents old cached modules/styles mixing with
+        # a newly deployed entrypoint on GitHub Pages (including OAuth returns).
+        source_html = (ROOT / 'web/index.html').read_text(encoding='utf-8')
+        release = hashlib.sha256(source_html.encode() + b''.join(
+            path.read_bytes() for path in sorted(assets.iterdir()) if path.is_file()
+        )).hexdigest()[:12]
+        for path in assets.glob('*.js'):
+            script = path.read_text(encoding='utf-8')
+            script = re.sub(r'''(\bfrom\s*['"])(\./[^'"]+\.js)(['"])''',
+                            lambda m: m[1] + m[2] + '?v=' + release + m[3], script)
+            path.write_text(script, encoding='utf-8')
         csp = f"default-src 'self'; script-src 'self'; style-src 'self'; connect-src 'self' {origin}; img-src 'self' data:; base-uri 'none'; object-src 'none'; frame-src 'none'; form-action 'self'"
-        html = (ROOT / 'web/index.html').read_text(encoding='utf-8').replace('__CSP__', csp)
+        html = source_html.replace('__CSP__', csp)
+        html = re.sub(r'''((?:src|href)="\./(?:assets|vendor)/[^"]+)"''',
+                      lambda m: m[1] + '?v=' + release + '"', html)
         (output / 'index.html').write_text(html, encoding='utf-8')
         public_config = {'url': origin, 'publishableKey': key}
         features = {name: True for name in ('freight', 'costSheets', 'documentService', 'recordAttachments') if config.get('features', {}).get(name) is True}
