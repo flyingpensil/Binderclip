@@ -1,0 +1,4 @@
+[functions.binderclip-documents]
+# OAuth callback uses one-time state + PKCE + the designated Google owner's
+# verified identity. App POST routes validate active sessions and RBAC in SQL.
+verify_jwt = false

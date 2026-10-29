@@ -18,7 +18,12 @@ class BackendTests(unittest.TestCase):
         cls.conn = psycopg.connect(dsn, autocommit=True)
         # This role/schema shim models the Supabase API boundary, not Google's token exchange.
         cls.conn.execute('''
-          create role anon nologin;create role authenticated nologin;
+          create role anon nologin;create role authenticated nologin;create role service_role nologin;
+          -- API-compatible test double only; encryption is provided by managed Supabase Vault.
+          create schema vault;
+          create table vault.decrypted_secrets(id uuid primary key default gen_random_uuid(),decrypted_secret text);
+          create function vault.create_secret(value text,name text default null,description text default null) returns uuid language sql as $f$insert into vault.decrypted_secrets(decrypted_secret) values(value) returning id$f$;
+          create function vault.update_secret(secret_id uuid,new_secret text) returns void language sql as $f$update vault.decrypted_secrets set decrypted_secret=new_secret where id=secret_id$f$;
           create schema auth;
           create table auth.users(id uuid primary key,email text,email_confirmed_at timestamptz,banned_until timestamptz);
           create table auth.identities(id uuid primary key default gen_random_uuid(),user_id uuid references auth.users,provider text);
@@ -70,6 +75,18 @@ class BackendTests(unittest.TestCase):
     def rates(self,action='list',data=None):
         return self.conn.execute('select public.bc_rates(%s,%s,%s)',(self.tenant,action,Jsonb(data or {}))).fetchone()[0]
     def owner(self): self.conn.execute('reset role')
+    def document_service(self,action,data=None):
+        claims=self.conn.execute('select auth.jwt()').fetchone()[0]
+        self.owner()
+        try:
+            with self.conn.transaction():
+                self.conn.execute("select set_config('request.jwt.claims','{\"role\":\"service_role\"}',true)")
+                self.conn.execute('set local role service_role')
+                return self.conn.execute('select public.bc_document_service(%s,%s)',(action,Jsonb(data or {}))).fetchone()[0]
+        finally:
+            self.owner()
+            self.conn.execute("select set_config('request.jwt.claims',%s,true)",(json.dumps(claims),))
+            self.client()
     def client(self): self.conn.execute('set local role authenticated')
     def denied(self,fn):
         with self.assertRaises(psycopg.Error), self.conn.transaction(): fn()
@@ -651,6 +668,9 @@ class BackendTests(unittest.TestCase):
         self.denied(lambda:self.conn.execute('select public.bc_document_finish(%s,%s)',(self.tenant,doc)))
         self.denied(lambda:self.command('job.book',{'id':job}))
         self.conn.execute("insert into storage.objects(bucket_id,name,metadata) values('binderclip-documents',%s,%s)",(path,Jsonb({'size':123,'mimetype':'application/pdf'})))
+        self.denied(lambda:self.conn.execute('select public.bc_document_finish(%s,%s)',(self.tenant,doc)))
+        self.document_service('document.claim',{'id':doc,'created_by':str(ADMIN),'sha256':'a'*64})
+        self.document_service('document.verified',{'id':doc,'created_by':str(ADMIN),'sha256':'a'*64})
         self.conn.execute('select public.bc_document_finish(%s,%s)',(self.tenant,doc))
         self.assertFalse(self.conn.execute("select public.bc_document_access(%s,'C')",(path,)).fetchone()[0])
         self.assertTrue(self.conn.execute("select public.bc_document_access(%s,'X')",(path,)).fetchone()[0])
@@ -658,6 +678,39 @@ class BackendTests(unittest.TestCase):
         self.owner();self.conn.execute("update binderclip.grants set can_export=false where path='operations.documents.manage'");self.client()
         self.assertEqual(self.conn.execute('select count(*) from storage.objects').fetchone()[0],0)
         self.denied(lambda:self.conn.execute("insert into storage.objects(bucket_id,name) values('binderclip-documents','wrong/tenant/path')"))
+
+    def test_document_credentials_are_server_only_and_states_one_use(self):
+        self.denied(lambda:self.conn.execute("select public.bc_document_service('connection.get')"))
+        self.denied(lambda:self.conn.execute('select * from binderclip.drive_connection'))
+        self.denied(lambda:self.conn.execute('select * from vault.decrypted_secrets'))
+        self.document_service('state.create',{'state_hash':'a'*64,'verifier':'v'*43})
+        self.assertEqual(self.document_service('state.consume',{'state_hash':'a'*64})['verifier'],'v'*43)
+        self.denied(lambda:self.document_service('state.consume',{'state_hash':'a'*64}))
+        self.document_service('state.create',{'state_hash':'b'*64,'verifier':'v'*43})
+        self.owner();self.conn.execute("update binderclip.drive_oauth_states set expires_at=now()-interval '1 minute'");self.client()
+        self.denied(lambda:self.document_service('state.consume',{'state_hash':'b'*64}))
+
+    def test_drive_manifests_require_verification_and_preserve_retry_identity(self):
+        _,_,job,_=self.fixtures()
+        self.document_service('connection.save',{'owner_email':'owner@example.test','owner_sub':'owner','client_id':'client','root_id':'root-private-123','credentials':{'refresh_token':'private-refresh','access_token':'private-access'}})
+        self.document_service('connection.ready',{'root_url':'https://example.test/private'})
+        doc=self.workflow('document.register',{'job_id':job,'kind':'BL','filename':'bl.pdf','mime':'application/pdf','bytes':'123'})['id']
+        context=self.conn.execute("select public.bc_document_context(%s,%s,'C')",(self.tenant,doc)).fetchone()[0]
+        self.assertNotIn('provider',context)
+        self.assertFalse(self.conn.execute("select public.bc_document_access(%s,'C')",(context['object_path'],)).fetchone()[0])
+        self.document_service('folder.claim',{'tenant_id':str(self.tenant),'job_id':job,'external_id':'job-folder-123'})
+        payload={'id':doc,'created_by':str(ADMIN),'sha256':'a'*64,'external_id':'original-file-123'}
+        first=self.document_service('document.claim',payload)
+        second=self.document_service('document.claim',{**payload,'external_id':'retry-file-123'})
+        self.assertEqual(first['external_id'],second['external_id'])
+        self.denied(lambda:self.document_service('document.claim',{**payload,'sha256':'b'*64}))
+        self.denied(lambda:self.conn.execute('select public.bc_document_finish(%s,%s)',(self.tenant,doc)))
+        self.document_service('document.verified',payload)
+        self.conn.execute('select public.bc_document_finish(%s,%s)',(self.tenant,doc))
+        self.assertEqual(self.conn.execute("select public.bc_document_context(%s,%s,'X')",(self.tenant,doc)).fetchone()[0]['status'],'Ready')
+        self.assertNotIn('original-file-123',json.dumps(self.workspace('job_workspace',job)))
+        self.owner();self.conn.execute("update binderclip.grants set can_export=false where path='operations.documents.manage'");self.client()
+        self.denied(lambda:self.conn.execute("select public.bc_document_context(%s,%s,'X')",(self.tenant,doc)))
 
     def test_invalid_documents_and_cross_company_assignee_denied(self):
         _,_,job,_=self.fixtures()

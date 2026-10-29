@@ -68,7 +68,7 @@ with checks(check_name,exceptions) as (
  ) d join binderclip.companies c on c.id=d.tenant_id where d.currency=c.currency and d.fx_rate<>1
  union all select 'Private tables missing RLS',count(*) from pg_tables where schemaname='binderclip' and not rowsecurity
  union all select 'Direct browser private-table grants',count(*) from information_schema.role_table_grants where table_schema='binderclip' and grantee in('anon','authenticated','PUBLIC')
- union all select 'Ready documents without matching stored files',count(*) from binderclip.job_documents d where d.status='Ready' and not exists(select 1 from storage.objects o where o.bucket_id='binderclip-documents' and o.name=d.object_path and (o.metadata->>'size')::bigint=d.bytes and o.metadata->>'mimetype'=d.mime)
+ union all select 'Ready documents without matching stored files',count(*) from binderclip.job_documents d where d.status='Ready' and not exists(select 1 from binderclip.document_storage s where s.document_id=d.id and s.provider='google_drive' and s.verified_at is not null and s.sha256 is not null and s.external_id is not null and s.parent_id is not null) and not exists(select 1 from storage.objects o where o.bucket_id='binderclip-documents' and o.name=d.object_path and (o.metadata->>'size')::bigint=d.bytes and o.metadata->>'mimetype'=d.mime)
  union all select 'Public document buckets',count(*) from storage.buckets where id='binderclip-documents' and public
 )
 select check_name,exceptions from checks order by check_name;

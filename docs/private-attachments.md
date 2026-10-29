@@ -1,0 +1,35 @@
+# Private attachment service — operator runbook
+
+Status: implementation staged; not activated until deployment, owner consent and a real upload/download test pass. This does not create database backups.
+
+## User experience and trust boundary
+
+No storage page, provider settings, account email or external folder links belong in the Binderclip UI. Users upload/download from their permitted job. Google account consent is an operator task outside Binderclip. Knowing the public source code or public Supabase key does not grant document access.
+
+The `binderclip-documents` Edge Function validates a live Binderclip session and job/document permissions before accessing private files. It rechecks download permission after retrieval. Its service-role key never reaches the browser. OAuth refresh/access tokens live in managed Supabase Vault; OAuth client secret lives in Edge secrets. File IDs and hashes live in private RLS-protected tables with no authenticated/anonymous grants. The function's privileged SQL broker is executable by service_role only.
+
+Gateway JWT verification is disabled for this function because Google callbacks have no Supabase token. Business POST endpoints independently authenticate through `bc_session` and `bc_document_context`. Do not remove those checks. The owner callback validates a short-lived, one-use CSRF state/cookie, PKCE and Google's verified user identity against the designated owner email.
+
+## Deploy and connect
+
+1. Run all Node and disposable PostgreSQL tests. Apply migration 027 only after managed Vault is available. Deploy both files in `supabase/functions/binderclip-documents/`, entrypoint `index.ts`, with the matching function configuration. Keep the frontend feature disabled during preparation. Do not deploy migration 027 in isolation while leaving the old upload UI active for users: its new registrations require server verification.
+2. Enable Google Drive API in the Binderclip Google Cloud project. Create a dedicated OAuth web client for the attachment service, with exact redirect URI `https://PROJECT.supabase.co/functions/v1/binderclip-documents/owner/callback`. Keep the existing Supabase Google sign-in client unchanged.
+3. Privately enter Edge secrets: `GOOGLE_DRIVE_CLIENT_ID`, `GOOGLE_DRIVE_CLIENT_SECRET`, `GOOGLE_DRIVE_OWNER_EMAIL`, `BINDERCLIP_APP_URL` (the full deployed HTTPS app URL). Supabase supplies `SUPABASE_URL`, `SUPABASE_ANON_KEY` and `SUPABASE_SERVICE_ROLE_KEY`; never copy these privileged values into app config. Do not paste secrets in chat, SQL history or GitHub.
+4. Owner opens `https://PROJECT.supabase.co/functions/v1/binderclip-documents/owner/connect` and personally completes Google consent with the designated account. Scope is `drive.file` plus OpenID/email, allowing app-created/explicitly authorized files rather than whole-Drive access. Offline authorization is required. Configure the Google OAuth audience/publishing status for durable use; an External app left in Testing can have expiring refresh tokens. Verify current Google requirements before client rollout.
+5. The callback creates a private **Binderclip files** folder and returns its URL to the owner only. Because folders created by a different connector OAuth app are not automatically accessible with `drive.file`, move this new folder under the previously allocated Binderclip/Attachments folder after creation, preserving its ID. Do not share it with clients or make it public. The app keeps a stable ID when moved.
+6. Owner connection closes automatically once a root exists. A deliberate reconnection requires backend `GOOGLE_DRIVE_SETUP_ENABLED=true`; remove/reset this after reconnecting. The original owner identity and OAuth client ID are preserved. Rotating to a different client needs an explicit migration/reconnection plan; do not blindly replace the client.
+7. Enable public config `features.documentService=true` and deploy the matching frontend together with the migration/function rollout. Test a synthetic TXT/PDF attachment on an authorized sample job: upload, download, byte/hash equality, pending retry, another user's denied export and cross-company denial. Do not modify client financial records for this check. Confirm the real folder remains unshared. Record observed account storage quota; subscription claims alone do not verify available capacity.
+
+Existing Supabase files retain their existing provider. New files use Drive after the owner root has been configured, including during a connection outage; they do not silently fall back to another storage provider. No existing attachments are moved/deleted by this migration. Existing open browser tabs must refresh for the new upload protocol.
+
+## Operational limits and recovery
+
+Files are limited to 10 MB: PDF, PNG, JPEG, UTF-8 TXT/CSV. Signature/encoding checks and SHA-256 detect format mismatches/corruption; these are not antivirus scanning. Download responses force attachments, disable caching and prevent inline content sniffing. Add a malware scanner before extending formats or handling higher-risk untrusted uploads.
+
+Retries reuse a pending registration and claimed remote ID. Changing file bytes requires a new attachment; a pending uploader can retry within 24 hours. Preserve incomplete uploads for investigation; this release does not automatically delete orphan files. Files changed, shared or moved out of their assigned job folder fail integrity checks.
+
+Monitor OAuth revocation, owner-account recovery, remaining Drive quota, Edge function invocation/egress quotas and Google API quotas. Drive capacity does not eliminate backend usage limits. Do not log authorization headers, OAuth codes, token responses or uploaded file contents. The personal storage account is a business dependency; plan future ownership/continuity before onboarding multiple paying companies.
+
+Private storage is not a backup. A separate encrypted database export, attachment manifest/files copy and restore rehearsal are still required. A database-only export does not include Drive bytes, and managed Vault keys are not reproduced by an ordinary SQL dump; plan reauthorization during disaster recovery.
+
+References: [Drive file scope](https://developers.google.com/workspace/drive/api/guides/api-specific-auth), [OAuth web server flow](https://developers.google.com/identity/protocols/oauth2/web-server), [Vault](https://supabase.com/docs/guides/database/vault), [Edge limits](https://supabase.com/docs/guides/functions/limits).

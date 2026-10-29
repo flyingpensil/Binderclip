@@ -24,6 +24,7 @@ jobs:
       - run: node --check web/search.js
       - run: node --check web/exchange.js
       - run: node --check web/company-settings.js
+      - run: node --check supabase/functions/binderclip-documents/index.js
       - uses: actions/setup-python@v5
         with:
           python-version: '3.13'

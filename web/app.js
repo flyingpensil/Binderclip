@@ -122,9 +122,10 @@ const exchange=createExchangeUI({state,rpc,can,heading,panel,table,button,edit})
 const practical=createPracticalUI({rateQuote:(a,b)=>exchange.quote(a,b),state,rpc,read,can,button,link,heading,panel,table,badge,edit,render,message,today,download});
 const customerBilling=createBillingUI({state,rpc,can,heading,panel,table,link,button,badge,edit,message,today});
 const costSheets=createCostSheetUI({practical,state,rpc,read,can,button,link,heading,panel,table,badge,stat,edit,render,today});
-const freight=createFreightUI({state,rpc,read,can,button,link,heading,panel,table,badge,edit,render,message,today,download});
+const freight=createFreightUI({documentService,state,rpc,read,can,button,link,heading,panel,table,badge,edit,render,message,today,download});
 
 document.addEventListener('click',async event=>{const el=event.target.closest('[data-do]');if(!el||state.busy)return;state.busy=true;el.disabled=true;try{await clickAction(el);}catch(error){fail(error);}finally{state.busy=false;if(el.isConnected)el.disabled=false;}});
+async function documentService(body){if(state.ready&&!idle.check())throw new Error('Signed out after two hours of inactivity.');const {data,error}=await state.client.functions.invoke('binderclip-documents',{body});if(error){let detail=error.message;try{detail=(await error.context.json()).error||detail;}catch{}if(/inactivity/i.test(detail||'')){lock(detail);void signout(detail);}throw new Error(detail||'The attachment service could not complete this request.');}return data;}
 async function syncSharedRate(form){syncPickerValues(form);if(!state.edit||!form.elements.currency||!form.elements.fx_rate)return;const entry=state.edit,currency=form.elements.currency.value,initial=entry.initial||{},submit=form.querySelector('[type=submit]');form.elements.fx_rate.readOnly=true;
  if(initial.id&&initial.currency===currency&&initial.fx_rate){entry.rateRequest=(entry.rateRequest||0)+1;form.elements.fx_rate.value=initial.fx_rate;submit.disabled=false;return;}
  const seq=(entry.rateRequest||0)+1;entry.rateRequest=seq;submit.disabled=true;

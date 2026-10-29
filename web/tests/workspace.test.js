@@ -38,9 +38,9 @@ test('authenticated freight workspace renders and submits complete workflows',as
   if(name==='bc_workspace'){const data={enquiries:[enquiry],quotes:[quote],quote,quote_print:{...quote,lines:lines.filter(l=>l.side==='SELL')},tasks:[],assignees:[{id:'m1',name:'Operations'}],payables:[bill],job_workspace:{events:[],tasks:[],documents:[],requirements:[]},search:{jobs:[job],customers:[],suppliers:[],invoices:[],enquiries:[],quotes:[quote]}};return {data:data[args.p_kind]};}
   throw new Error('Unexpected RPC '+name);
  }
- w.supabase={createClient:()=>({rpc:fakeRpc,auth:{getUser:async()=>({data:{user:{id:'user'}}}),onAuthStateChange:()=>{},signOut:async()=>({})},storage:{from:()=>({upload:async(path,file,options)=>{uploads.push({path,file,options});return {error:uploadError};}})}})};
+ w.supabase={createClient:()=>({rpc:fakeRpc,auth:{getUser:async()=>({data:{user:{id:'user'}}}),onAuthStateChange:()=>{},signOut:async()=>({})},functions:{invoke:async(name,{body})=>{uploads.push({service:name,body});return uploadError?{error:uploadError}:{data:{id:'created',status:'Ready'}};}},storage:{from:()=>({upload:async(path,file,options)=>{uploads.push({path,file,options});return {error:uploadError};}})}})};
  let scrollResult=null;w.scrollTo=value=>{scrollResult=value;};
- globalThis.fetch=async()=>({ok:true,json:async()=>({url:'https://example.supabase.co',publishableKey:'sb_publishable_test',features:{freight:true,costSheets:true}})});
+ globalThis.fetch=async()=>({ok:true,json:async()=>({url:'https://example.supabase.co',publishableKey:'sb_publishable_test',features:{freight:true,costSheets:true,documentService:true}})});
  const wait=async predicate=>{const deadline=Date.now()+2000;while(!predicate()){if(Date.now()>deadline)throw new Error('DOM condition timed out: '+w.document.body.textContent.slice(-800));await new Promise(resolve=>setImmediate(resolve));}};
  const click=async selector=>{const el=w.document.querySelector(selector);assert.ok(el,'Missing '+selector);el.click();await new Promise(resolve=>setImmediate(resolve));};
  const route=async(hash,text)=>{w.location.hash=hash;const page=hash.split('/')[0],label={invoice:'Customer invoice',job:'Job detail',quote:'Quotation',reports:'Reports',search:'Global search',sales:'Sales',tasks:'Tasks & reminders',payables:'Supplier payments',rate:'Rate card',role:'Role permissions',costsheet:'Cost sheet',costsheets:'Cost sheets',company:'Company profile',exchange:'Currency exchange','purchases':'Supplier invoices','purchase':'Supplier invoice','purchase-new':'New supplier invoice','purchase-edit':'Edit supplier invoice','invoice-edit':'Prepare invoice','job-invoices':'Job invoices','customer-reports':'Customer account reports',invoices:'Customer invoices',customers:'Customers',jobs:'Jobs'}[page]||page;await wait(()=>w.document.getElementById('screen').textContent.includes(text)&&w.document.getElementById('breadcrumb').textContent===label);};
@@ -74,13 +74,13 @@ test('authenticated freight workspace renders and submits complete workflows',as
   await t.test('upload registers, sends private file, and finalizes only after success',async()=>{
    await click('[data-do="freight-document"]');await wait(()=>w.document.getElementById('editor').open);
    const input=w.document.querySelector('[name=upload]');Object.defineProperty(input,'files',{value:[new w.File(['pdf'],'bl.pdf',{type:'application/pdf'})]});
-   await submit({kind:'BL'});assert.equal(uploads[0].path,'tenant/j1/created');assert.equal(uploads[0].options.upsert,false);
-   assert.ok(calls.some(c=>c.name==='bc_document_finish'));
+   await submit({kind:'BL'});assert.equal(uploads[0].service,'binderclip-documents');assert.equal(uploads[0].body.get('tenant_id'),'tenant');assert.equal(uploads[0].body.get('document_id'),'created');
+   assert.equal(calls.some(c=>c.name==='bc_document_finish'),false);
   });
   await t.test('failed upload never finalizes a document',async()=>{
    const before=calls.filter(c=>c.name==='bc_document_finish').length;uploadError={message:'Network interrupted'};
    await click('[data-do="freight-document"]');await wait(()=>w.document.getElementById('editor').open);Object.defineProperty(w.document.querySelector('[name=upload]'),'files',{value:[new w.File(['pdf'],'bl.pdf',{type:'application/pdf'})]});
-   await submit({kind:'BL'});assert.equal(calls.filter(c=>c.name==='bc_document_finish').length,before);assert.match(w.document.getElementById('form-error').textContent,/Upload failed/);uploadError=null;w.document.getElementById('editor').close();
+   await submit({kind:'BL'});assert.equal(calls.filter(c=>c.name==='bc_document_finish').length,before);assert.match(w.document.getElementById('form-error').textContent,/Upload failed/);const registrations=calls.filter(c=>c.args.p_action==='document.register').length;uploadError=null;await submit({kind:'BL'});await wait(()=>!w.document.getElementById('editor').open);assert.equal(calls.filter(c=>c.args.p_action==='document.register').length,registrations);assert.equal(w.document.getElementById('editor').open,false);
   });
   await t.test('supplier payment form constrains amount and posts bill reference',async()=>{
    await route('payables','BILL-1');await click('[data-do="freight-payment"]');await wait(()=>w.document.getElementById('editor').open);
