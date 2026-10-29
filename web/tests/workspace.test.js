@@ -172,7 +172,7 @@ test('authenticated freight workspace renders and submits complete workflows',as
    assert.ok(form.elements.comments_0);assert.ok(form.elements.unit_0);assert.ok(form.elements.tax_rate_0);
    form.requestSubmit();await wait(()=>calls.some(c=>c.args.p_action==='invoice.save'));
    const saved=calls.findLast(c=>c.args.p_action==='invoice.save');assert.equal(saved.args.p_data.discount,'100');assert.equal(saved.args.p_data.adjustment,'20');
-   await wait(()=>w.location.hash==='#invoice/invoice-created'&&w.document.getElementById('breadcrumb').textContent==='invoice');
+   await wait(()=>w.location.hash==='#invoice/invoice-created'&&w.document.getElementById('breadcrumb').textContent==='Customer invoice');
   });
   await t.test('customer report selection requests a scoped statement and shows currency totals',async()=>{
    await route('customer-reports/statement','Choose a customer');
