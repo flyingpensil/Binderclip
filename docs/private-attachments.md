@@ -1,6 +1,8 @@
 # Private attachment service — operator runbook
 
-Status: implementation staged; not activated until deployment, owner consent and a real upload/download test pass. This does not create database backups.
+Status (2026-10-29): migration 027, the Edge Function and the matching frontend are deployed. Owner Google consent and a real Drive upload/download test remain pending. The live endpoint rejects missing sessions, unrelated origins and anonymous credential-broker calls. All 25 structural/accounting audit controls returned zero exceptions after deployment. This does not create database backups or prove every accounting scenario.
+
+Google currently blocks the designated storage owner because the OAuth project is External/Testing and only the original administrator is listed as a test user. The owner tester entry is prepared for human review/save. Publishing is disabled until branding configuration is complete (home page/privacy policy are currently blank). Testing-mode Drive refresh tokens expire after seven days; complete production OAuth configuration and reauthorize before relying on unattended storage. Do not treat temporary test consent as a durable production connection.
 
 ## User experience and trust boundary
 
