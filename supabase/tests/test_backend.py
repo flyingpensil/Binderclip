@@ -47,8 +47,12 @@ class BackendTests(unittest.TestCase):
         self.conn.execute('set local role authenticated')
         self.conn.execute('select public.bc_session()')
     def tearDown(self):
-        self.conn.execute('rollback')
-        self.conn.execute('reset role')
+        try:
+            if self.conn.info.transaction_status == psycopg.pq.TransactionStatus.INTRANS:
+                self.client();self.conn.execute('set constraints all immediate')
+        finally:
+            self.conn.execute('rollback')
+            self.conn.execute('reset role')
     def command(self,action,data=None,tenant=None):
         return self.conn.execute('select public.bc_command(%s,%s,%s)',(tenant or self.tenant,action,Jsonb(data or {}))).fetchone()[0]
     def read(self,kind,id=None,action='R'):
@@ -91,6 +95,18 @@ class BackendTests(unittest.TestCase):
         self.assertEqual(len(self.read('members')),1);self.assertEqual(len(self.read('roles')),4)
         self.assertEqual(self.read('jobs'),[])
         self.assertEqual(self.read('overview')['active_jobs'],'0')
+
+    def test_deferred_journal_check_runs_as_private_trigger_not_browser_role(self):
+        _,_,job,purchases=self.practical_fixture()
+        self.practical('costsheet.import',{'job_id':job,'invoice_ids':purchases})
+        self.practical('costsheet.book_match',{'job_id':job})
+        # Reproduce the previous production failure in this disposable transaction.
+        self.owner();self.conn.execute('alter function binderclip.balance() security invoker');self.client()
+        self.denied(lambda:self.conn.execute('set constraints all immediate'))
+        self.owner();self.conn.execute('alter function binderclip.balance() security definer');self.client()
+        self.conn.execute('set constraints all immediate')
+        self.assertEqual(self.read('job',job)['status'],'Booked')
+        self.denied(lambda:self.conn.execute('select * from binderclip.journal_lines'))
 
     def practical_fixture(self):
         customer=self.command('master.save',{'kind':'customers','name':'Practical customer','currency':'AED','data':{'default_fx_rate':'1','nature_of_business':'Manufacturing','trn':'100000000000001','crn':'CRN-001'}})['id']
